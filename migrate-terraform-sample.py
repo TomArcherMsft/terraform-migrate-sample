@@ -7,6 +7,7 @@ import subprocess
 import argparse
 from colorama import Fore, Back, Style
 import json
+from enum import Enum
 
 import openai
 from azure.identity import AzureCliCredential
@@ -37,29 +38,45 @@ new_sample_input_dir            = ''
 new_sample_output_dir           = ''
 application_path                = ''
 
+class PrintDisposition(Enum):
+    SUCCESS = 1
+    WARNING = 2
+    ERROR   = 3
+    STATUS  = 4
+
+def print_message(text = '', disp = PrintDisposition.STATUS):
+    if disp == PrintDisposition.SUCCESS:
+        color = Fore.GREEN
+    elif disp == PrintDisposition.WARNING:
+        color = Fore.YELLOW
+    elif disp == PrintDisposition.ERROR:
+        color = Fore.RED
+    else: # Status only
+        color = Fore.WHITE
+
+    print(color + text + Style.RESET_ALL)
+
 def write_file(file_name, contents):
     try:
         with open(file_name, "w") as f:
             f.write(contents)
     except OSError as error:
-        print(Fore.RED)
-        print(error)
+        print_message(f"Failed to write file: {error}", PrintDisposition.ERROR)
 
 def write_dictionary_to_file(file_name, dictionary):
     try:
         with open(file_name, "w") as f:
             f.write(json.dumps(dictionary, indent=4))
     except OSError as error:
-        print(Fore.RED)
-        print(error)
+        print_message(f"Failed to write file: {error}", PrintDisposition.ERROR)
 
 def generate_new_sample():
-    print("Generating new sample...")
+    print_message("Generating new sample...")
 
     completion = ''
 
     try:
-        print("\tCreating prompt...")
+        print_message("\tCreating prompt...")
 
         messages = []
 
@@ -71,8 +88,9 @@ def generate_new_sample():
         if debug_mode:
             write_dictionary_to_file('prompt.json', messages)
 
-        print("\tCalling OpenAI...")
+        print_message("\tCalling OpenAI...")
         time.sleep(1)
+        return ""
         response = openai.ChatCompletion.create(engine=OPENAI_ENGINE,
                                                 messages=messages,
                                                 temperature=0
@@ -81,8 +99,7 @@ def generate_new_sample():
         if response:
             completion = response.choices[0].message.content.rstrip()
     except OSError as error:
-        print(Fore.RED)
-        print(error)
+        print_message(f"Failed to generate new sample. {error}", PrintDisposition.ERROR)
 
     time.sleep(1)
 
@@ -92,7 +109,7 @@ def generate_new_sample():
     return completion
 
 def get_input_source(args):
-    print("Validating input args...")
+    print_message("Validating input args...")
 
     success = True
 
@@ -104,23 +121,21 @@ def get_input_source(args):
 
             # Each line is an input and there needs to be at least one line (input).
             if 1 > len(inputs):
-                print(Fore.RED 
-                      + 'At least one input/output pair must be specified in the inputs file.')
+                print_message('At least one input/output pair must be specified in the inputs file.', PrintDisposition.ERROR)
                 success = False
     except OSError as error:
-        print(Fore.RED)
-        print(error)
+        print_message(f"Failed to open inputs file. {error}", PrintDisposition.ERROR)
         success = False
 
     # If the Inputs file successfully opened...
     if success:
-        print("Processing input file...")
+        print_message("Processing input file...")
 
         # For each line in the file (representing a sample)...
         for i, (input, output) in enumerate(inputs.items()):
-            print(f"\tInput dir:{input}")
-            print(f"\tOutput dir:{output}")
-            print()
+            print_message(f"\tInput dir:{input}")
+            print_message(f"\tOutput dir:{output}")
+            print_message()
             sample_inputs_source.append(get_terraform_source_code(input))
             sample_outputs_source.append(get_terraform_source_code(output))
 
@@ -135,14 +150,11 @@ def get_input_source(args):
                 # Add the sample dir to the list.
                 sample_inputs_source.append(get_terraform_source_code(new_sample_input_dir))
             except OSError as error:
-                print(Fore.RED)
-                print(error)
+                print_message(f"Failed to create output directory. {error}", PrintDisposition.ERROR)
                 success = False
         else:
 
-            print(Fore.RED 
-                  + 'Sample directory not found: ' 
-                  + new_sample_input_dir)
+            print_message(f"Sample directory not found: {new_sample_input_dir}", PrintDisposition.ERROR)
             
             success = False
 
@@ -200,7 +212,7 @@ def file_exists(path):
 def parse_args():
     # Configure argParser for user-supplied arguments.
 
-    print("Parsing args...")
+    print_message("Parsing args...")
 
     argParser = argparse.ArgumentParser()
     argParser.add_argument("-s", 
@@ -210,13 +222,14 @@ def parse_args():
 
     argParser.add_argument("-d", 
                            "--debug", 
+                           action=argparse.BooleanOptionalAction,
                            help="Outputs files to help with debugging.", 
                            required=False)
 
     return argParser.parse_args()
 
 def create_new_sample():
-    print("Creating new sample...")
+    print_message("Creating new sample...")
 
     success = True
 
@@ -237,29 +250,29 @@ def create_new_sample():
                         sub = sub.strip()
 
                         curr_qfn = os.path.join(new_sample_output_dir, current_file)
-                        print("\tWriting file: " + curr_qfn)
+                        print_message("\tWriting file: " + curr_qfn)
                         with open(curr_qfn, "w") as f:
                             f.write(sub)
                     else:
-                        print("\tFailed to find the end of the file name.")
+                        print_message("\tFailed to find the end of the file name.")
                         success = False
                 else:
-                    print("\tFailed to find the beginning of the file name.")
+                    print_message("\tFailed to find the beginning of the file name.")
                     success = False
         else:
-            print("\tFailed to find any file names in the completion.")
+            print_message("\tFailed to find any file names in the completion.")
             success = False
     else:
-        print("\tFailed to get a valid completion from OpenAI.")
+        print_message("\tFailed to get a valid completion from OpenAI.", PrintDisposition.ERROR)
         success = False
 
     return success
 
 def clean_up():
-    print(Style.RESET_ALL)
+    print_message(Style.RESET_ALL)
 
 def init_app(args):
-    print("Initializing app...")
+    print_message("Initializing app...")
 
     global application_path
     global new_sample_output_dir
@@ -272,33 +285,31 @@ def init_app(args):
     new_sample_output_dir = os.path.join(application_path, 'outputs')
 
     if args.debug:
-        print(Fore.YELLOW + "Debugging enabled.")
+        print_message("Debugging enabled.", PrintDisposition.WARNING)
         global debug_mode
         debug_mode = True
 
 def main():
-        print(Fore.GREEN)
+    print_message()
 
-        # Get the command-line args (parameters).
-        args = parse_args()
+    # Get the command-line args (parameters).
+    args = parse_args()
 
-        # Initialize the application.
-        init_app(args)
+    # Initialize the application.
+    init_app(args)
 
-        # If args are valid...
-        if get_input_source(args):
+    # If args are valid...
+    if get_input_source(args):
 
-            # Create the new sample.
-            if create_new_sample():
+        # Create the new sample.
+        if create_new_sample():
 
-                # Print success message to user.
-                print(Fore.BLUE 
-                    + 'Sample successfully translated: '
-                    + new_sample_input_dir)
-            else:
-                print(Fore.RED + 'Failed generation.')
+            # Print success message to user.
+            print_message(f"Sample successfully translated: {new_sample_input_dir}", PrintDisposition.SUCCESS)
         else:
-            print(Fore.RED + 'Failed to get args.')
+            print_message(Fore.RED + 'Failed generation.' + Style.RESET_ALL)
+    else:
+        print_message(Fore.RED + 'Failed to get args.' + Style.RESET_ALL)
 
-        clean_up()
+    clean_up()
 main()
