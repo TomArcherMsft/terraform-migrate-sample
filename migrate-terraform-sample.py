@@ -1,5 +1,6 @@
 import sys
 import os
+import keyboard
 import time
 import datetime
 import re
@@ -17,6 +18,7 @@ OPENAI_API_BASE                 = 'https://openai-content-selfserv.openai.azure.
 OPENAI_VERSION                  = '2023-07-01-preview' # This may change in the future.
 OPENAI_API_TYPE                 = 'azure_ad'
 OPENAI_ENGINE                   = 'gpt-4-32k-moreExpensivePerToken'
+SETTINGS_FILE_NAME              = 'settings.json'
 
 openai.api_base     = OPENAI_API_BASE
 openai.api_version  = OPENAI_VERSION
@@ -30,19 +32,28 @@ openai.api_key      = token.token
 TEST_RECORD_FILE_NAME           = 'TestRecord.md'
 
 # Globals
+settings_before_and_after_dirs  = {}
+directories_to_process          = []
 sample_inputs_source            = []
 sample_outputs_source           = []
 debug_mode                      = False
-
+debug_path                      = ''
+temp_path                       = ''
 new_sample_input_dir            = ''
 new_sample_output_dir           = ''
-application_path                = ''
+
+class AppMode(Enum):
+    PROCESS_ALL_SAMPLES_WITHOUT_INTERRUPTION    = 1
+    CONFIRM_CONTINUE_AFTER_EACH_SAMPLE          = 2
+
+app_mode = AppMode.CONFIRM_CONTINUE_AFTER_EACH_SAMPLE
 
 class PrintDisposition(Enum):
     SUCCESS = 1
     WARNING = 2
     ERROR   = 3
-    STATUS  = 4
+    QUERY   = 4
+    STATUS  = 5
 
 def print_message(text = '', disp = PrintDisposition.STATUS):
     if disp == PrintDisposition.SUCCESS:
@@ -51,6 +62,8 @@ def print_message(text = '', disp = PrintDisposition.STATUS):
         color = Fore.YELLOW
     elif disp == PrintDisposition.ERROR:
         color = Fore.RED
+    elif disp == PrintDisposition.QUERY:
+        color = Fore.BLUE
     else: # Status only
         color = Fore.WHITE
 
@@ -70,7 +83,8 @@ def write_dictionary_to_file(file_name, dictionary):
     except OSError as error:
         print_message(f"Failed to write file: {error}", PrintDisposition.ERROR)
 
-def generate_new_sample():
+def generate_new_sample(sample_dir):
+
     print_message("Generating new sample...")
 
     completion = ''
@@ -83,7 +97,9 @@ def generate_new_sample():
         for i in range(len(sample_inputs_source)-1):
             messages.append({"role": "user", "content": sample_inputs_source[i]})
             messages.append({"role": "assistant", "content": sample_outputs_source[i]})
-        messages.append({"role": "user", "content": sample_inputs_source[i+1]})
+
+        sample_source = get_terraform_source_code(sample_dir)
+        messages.append({"role": "user", "content": sample_source})
 
         if debug_mode:
             write_dictionary_to_file('prompt.json', messages)
@@ -97,7 +113,7 @@ def generate_new_sample():
                                                 )
                                                 
         if response:
-            completion = response.choices[0].message.content.rstrip()
+            completion = response.user_responses[0].message.content.rstrip()
     except OSError as error:
         print_message(f"Failed to generate new sample. {error}", PrintDisposition.ERROR)
 
@@ -111,54 +127,9 @@ def generate_new_sample():
 def get_input_source(args):
     print_message("Validating input args...")
 
-    success = True
-
-    try:
-        # Open the Inputs file.
-        with open('inputs.json') as inputs_file:
-            # Load the JSON inputs file.
-            inputs = json.load(inputs_file)
-
-            # Each line is an input and there needs to be at least one line (input).
-            if 1 > len(inputs):
-                print_message('At least one input/output pair must be specified in the inputs file.', PrintDisposition.ERROR)
-                success = False
-    except OSError as error:
-        print_message(f"Failed to open inputs file. {error}", PrintDisposition.ERROR)
-        success = False
-
-    # If the Inputs file successfully opened...
-    if success:
-        print_message("Processing input file...")
-
-        # For each line in the file (representing a sample)...
-        for i, (input, output) in enumerate(inputs.items()):
-            print_message(f"\tInput dir:{input}")
-            print_message(f"\tOutput dir:{output}")
-            print_message()
-            sample_inputs_source.append(get_terraform_source_code(input))
-            sample_outputs_source.append(get_terraform_source_code(output))
-
-        # If the specified sample dir exists...
-        new_sample_input_dir = args.sample_directory
-        if file_exists(new_sample_input_dir):
-
-            try:
-                if not os.path.exists(new_sample_output_dir):
-                    os.mkdir(new_sample_output_dir)
-
-                # Add the sample dir to the list.
-                sample_inputs_source.append(get_terraform_source_code(new_sample_input_dir))
-            except OSError as error:
-                print_message(f"Failed to create output directory. {error}", PrintDisposition.ERROR)
-                success = False
-        else:
-
-            print_message(f"Sample directory not found: {new_sample_input_dir}", PrintDisposition.ERROR)
-            
-            success = False
-
-    return success
+    for i, (before, after) in enumerate(settings_before_and_after_dirs.items()):
+        sample_inputs_source.append(get_terraform_source_code(before))
+        sample_outputs_source.append(get_terraform_source_code(after))
 
 def list_to_string(input_list):
 
@@ -220,6 +191,12 @@ def parse_args():
                            help="Name of input sample directory.", 
                            required=True)
 
+    argParser.add_argument("-r", 
+                           "--recursive", 
+                           action=argparse.BooleanOptionalAction,
+                           help="Processes all subdirectories of specified 'input sample directory'.", 
+                           required=False)
+
     argParser.add_argument("-d", 
                            "--debug", 
                            action=argparse.BooleanOptionalAction,
@@ -228,12 +205,13 @@ def parse_args():
 
     return argParser.parse_args()
 
-def create_new_sample():
+def create_new_sample(sample_dir):
     print_message("Creating new sample...")
 
     success = True
 
-    completion = generate_new_sample()
+    completion = generate_new_sample(sample_dir)
+    return
 
     if completion:
         file_names = re.findall(r'###(.*)###', completion)
@@ -254,62 +232,176 @@ def create_new_sample():
                         with open(curr_qfn, "w") as f:
                             f.write(sub)
                     else:
-                        print_message("\tFailed to find the end of the file name.")
-                        success = False
+                        raise ValueError('Failed to find the end of the file name.')
                 else:
-                    print_message("\tFailed to find the beginning of the file name.")
-                    success = False
+                    raise ValueError('Failed to find the beginning of the file name.')
         else:
-            print_message("\tFailed to find any file names in the completion.")
-            success = False
+            raise ValueError('Failed to find any file names in the completion.')
     else:
-        print_message("\tFailed to get a valid completion from OpenAI.", PrintDisposition.ERROR)
-        success = False
-
-    return success
-
-def clean_up():
-    print_message(Style.RESET_ALL)
+        raise ValueError('Failed to get a valid completion from OpenAI.')
 
 def init_app(args):
     print_message("Initializing app...")
 
-    global application_path
-    global new_sample_output_dir
-
+    # Get the application path.
+    application_path = ''
     if getattr(sys, 'frozen', False):
         application_path = os.path.dirname(sys.executable)
     elif __file__:
         application_path = os.path.dirname(__file__)
 
-    new_sample_output_dir = os.path.join(application_path, 'outputs')
+    # Verify that the application path was found.
+    if application_path == '':
+        raise ValueError('Failed to get application path.')
 
+    # Set the debug path based on the application path.
+    global debug_path
+    debug_path = os.path.join(application_path, 'debug')
+
+    # If debug path doesn't exist, create it.
+    if not os.path.exists(debug_path):
+        try:
+            os.mkdir(debug_path)
+        except OSError as error:
+            raise ValueError('Failed to create debug directory.') from error
+        
+    # Set the temp path based on the application path.
+    global temp_path
+    temp_path = os.path.join(application_path, 'temp')
+
+    # If temp path doesn't exist, create it.
+    if not os.path.exists(temp_path):
+        os.mkdir(temp_path)
+
+    # Set global debugging flag based on command-line arg.        
     if args.debug:
         print_message("Debugging enabled.", PrintDisposition.WARNING)
         global debug_mode
         debug_mode = True
 
-def main():
+    get_before_and_after_sample_dirs()
+
+    load_directories_to_process(args)
+
+def get_before_and_after_sample_dirs():
+
+    try:
+        # Open the Inputs file.
+        with open(SETTINGS_FILE_NAME) as inputs_file:
+            # Load the JSON inputs file.
+            inputs = json.load(inputs_file)
+    except OSError as error:
+        raise ValueError(f"Failed to open settings file ({SETTINGS_FILE_NAME}).") from error
+
+    # Each line is an input and there needs to be at least one line (input).
+    if 1 > len(inputs):
+        raise ValueError('At least one input/output pair must be specified in the inputs file.')
+
+    # For each line in the file (representing a sample)...
+    for i, (input, output) in enumerate(inputs.items()):
+        settings_before_and_after_dirs[input] = output
+
+def load_directories_to_process(args):
+    print_message("Loading directories to process...")
+
+    global directories_to_process
+
+    # If the specified sample dir exists...
+    if file_exists(args.sample_directory):
+
+        # If recursive flag is set...
+        if args.recursive:
+
+            # For every directory in the sample dir...
+            for root, dirs, files in os.walk(args.sample_directory):
+
+                # For every directory in the sample dir...
+                for dir in dirs:
+
+                    # Add the directory to the list.
+                    if len([1 for x in list(os.scandir(os.path.join(root, dir))) if x.is_file()]) > 0:
+                        directories_to_process.append(os.path.abspath(os.path.join(root, dir)))
+    else:
+        raise ValueError(f"Sample directory not found: {args.sample_directory}")
+
+def present_plan():
+    print_message()
+    print_message("***IMPORTANT***: The Skilling org pays for the use of the Azure OpenAI service based on the number of tokens in the request & response for each generated sample.", PrintDisposition.WARNING)
+    print_message("See the pricing article for more information: https://azure.microsoft.com/en-us/pricing/details/cognitive-services/openai-service/", PrintDisposition.WARNING)
+    print_message("Please review the plan below and reach out for guidance if you think the number of samples might be costly.", PrintDisposition.WARNING)
+    print_message()
+    print_message("Plan:", PrintDisposition.WARNING)
     print_message()
 
-    # Get the command-line args (parameters).
-    args = parse_args()
+    # Print the number of directories to process.
+    print_message(f"\tNumber of directories to process (max 5 shown): {len(directories_to_process)}", PrintDisposition.WARNING)
+    for i in range(len(directories_to_process)): 
+        print_message(f"\t{i+1}: {directories_to_process[i]}", PrintDisposition.WARNING)
+    print_message()
 
-    # Initialize the application.
-    init_app(args)
+    print_message("\tThe following inputs pairs will be used to generate the new sample(s):", PrintDisposition.WARNING)
+    for i, (before, after) in enumerate(settings_before_and_after_dirs.items()):
+        print_message(f"\tBefore: {before}", PrintDisposition.WARNING)
+        print_message(f"\tAfter: {after}", PrintDisposition.WARNING)
+        print_message()
 
-    # If args are valid...
-    if get_input_source(args):
+def confirm_continuation_for_current_sample(sample_dir):
+    process_current_sample = True
 
-        # Create the new sample.
-        if create_new_sample():
+    print_message("Are you sure you want to perform this action?", PrintDisposition.QUERY)
+    print_message(f"Migrating sample directory: {sample_dir}", PrintDisposition.QUERY)
+    print_message("[Y] Yes, process this sample [A] Yes to All, [No] Skip this sample, [Q] Quit the application.", PrintDisposition.QUERY)
 
-            # Print success message to user.
-            print_message(f"Sample successfully translated: {new_sample_input_dir}", PrintDisposition.SUCCESS)
-        else:
-            print_message(Fore.RED + 'Failed generation.' + Style.RESET_ALL)
-    else:
-        print_message(Fore.RED + 'Failed to get args.' + Style.RESET_ALL)
+    while True:
+        user_response = keyboard.read_key().upper()
 
-    clean_up()
+        global app_mode
+        if user_response == "Y":
+            process_current_sample = True
+            break
+        elif user_response == "A":
+            app_mode = AppMode.PROCESS_ALL_SAMPLES_WITHOUT_INTERRUPTION
+            process_current_sample = True
+            break
+        elif user_response == "N":
+            process_current_sample = True
+            break
+        elif user_response == "Q":
+            raise ValueError("User cancelled the application.")
+
+        time.sleep(0.3)
+
+    return process_current_sample
+
+def main():
+    try:
+        # Get the command-line args (parameters).
+        args = parse_args()
+
+        # Initialize the application.
+        init_app(args)
+
+        # Present the plan to the user and allow them to cancel
+        # or decided after each sample whether to continue.
+        present_plan()
+
+        # Get the source code for the samples that are being used as the prompt 
+        # to illustrate the "before and after" samples.
+        get_input_source(args)
+
+        # For each directory to process...
+        for sample_dir in directories_to_process:
+
+            if (app_mode == AppMode.PROCESS_ALL_SAMPLES_WITHOUT_INTERRUPTION
+            or confirm_continuation_for_current_sample(sample_dir)):
+
+                # Create the new sample.
+                create_new_sample(sample_dir)
+
+        # Print success message to user.
+        print_message(f"Sample successfully migrated: {sample_dir}", PrintDisposition.SUCCESS)
+
+    except ValueError as error:
+        print_message(f"Failed to migrate sample. {error}", PrintDisposition.ERROR)
+
 main()
