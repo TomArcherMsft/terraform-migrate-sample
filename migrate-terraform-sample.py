@@ -398,8 +398,8 @@ def main():
                 # Create the new sample.
                 create_new_sample(sample_dir)
 
-        # Print success message to user.
-        print_message(f"Sample successfully migrated: {sample_dir}", PrintDisposition.SUCCESS)
+                # Print success message to user.
+                print_message(f"Sample successfully migrated: {sample_dir}", PrintDisposition.SUCCESS)
 
     except ValueError as error:
         print_message(f"Failed to migrate sample. {error}", PrintDisposition.ERROR)
