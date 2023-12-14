@@ -364,7 +364,7 @@ def confirm_continuation_for_current_sample(sample_dir):
             process_current_sample = True
             break
         elif user_response == "N":
-            process_current_sample = True
+            process_current_sample = False
             break
         elif user_response == "Q":
             raise ValueError("User cancelled the application.")
@@ -382,7 +382,7 @@ def main():
         init_app(args)
 
         # Present the plan to the user and allow them to cancel
-        # or decided after each sample whether to continue.
+        # or decide after each sample whether to continue.
         present_plan()
 
         # Get the source code for the samples that are being used as the prompt 
