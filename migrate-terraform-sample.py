@@ -18,7 +18,11 @@ OPENAI_API_BASE                 = 'https://openai-content-selfserv.openai.azure.
 OPENAI_VERSION                  = '2023-07-01-preview' # This may change in the future.
 OPENAI_API_TYPE                 = 'azure_ad'
 OPENAI_ENGINE                   = 'gpt-4-32k-moreExpensivePerToken'
+
 SETTINGS_FILE_NAME              = 'settings.json'
+MAX_SAMPLES_TO_PRINT            = 5
+OUTPUT_DIRECTORY_NAME           = 'output'
+TEMP_DIRECTORY_NAME             = 'temp'
 
 openai.api_base     = OPENAI_API_BASE
 openai.api_version  = OPENAI_VERSION
@@ -37,7 +41,7 @@ directories_to_process          = []
 sample_inputs_source            = []
 sample_outputs_source           = []
 debug_mode                      = False
-debug_path                      = ''
+output_path                     = ''
 temp_path                       = ''
 new_sample_input_dir            = ''
 new_sample_output_dir           = ''
@@ -54,6 +58,7 @@ class PrintDisposition(Enum):
     ERROR   = 3
     QUERY   = 4
     STATUS  = 5
+    DEBUG   = 6
 
 def print_message(text = '', disp = PrintDisposition.STATUS):
     if disp == PrintDisposition.SUCCESS:
@@ -64,6 +69,8 @@ def print_message(text = '', disp = PrintDisposition.STATUS):
         color = Fore.RED
     elif disp == PrintDisposition.QUERY:
         color = Fore.BLUE
+    elif disp == PrintDisposition.DEBUG:
+        color = Fore.MAGENTA
     else: # Status only
         color = Fore.WHITE
 
@@ -85,35 +92,32 @@ def write_dictionary_to_file(file_name, dictionary):
 
 def generate_new_sample(sample_dir):
 
-    print_message("Generating new sample...")
-
     completion = ''
 
     try:
-        print_message("\tCreating prompt...")
-
         messages = []
 
-        for i in range(len(sample_inputs_source)-1):
+        # for every item in sample_inputs_source...
+        for i in range(len(sample_inputs_source)):
             messages.append({"role": "user", "content": sample_inputs_source[i]})
             messages.append({"role": "assistant", "content": sample_outputs_source[i]})
 
-        sample_source = get_terraform_source_code(sample_dir)
+        sample_source = get_terraform_source_code(sample_dir, include_file_names=False)
         messages.append({"role": "user", "content": sample_source})
 
         if debug_mode:
             write_dictionary_to_file('prompt.json', messages)
 
-        print_message("\tCalling OpenAI...")
+        print_message(f"\nCalling OpenAI for {sample_dir}...")
         time.sleep(1)
-        return ""
+
         response = openai.ChatCompletion.create(engine=OPENAI_ENGINE,
                                                 messages=messages,
                                                 temperature=0
                                                 )
                                                 
         if response:
-            completion = response.user_responses[0].message.content.rstrip()
+            completion = response['choices'][0]['message']['content']
     except OSError as error:
         print_message(f"Failed to generate new sample. {error}", PrintDisposition.ERROR)
 
@@ -125,11 +129,10 @@ def generate_new_sample(sample_dir):
     return completion
 
 def get_input_source(args):
-    print_message("Validating input args...")
 
     for i, (before, after) in enumerate(settings_before_and_after_dirs.items()):
-        sample_inputs_source.append(get_terraform_source_code(before))
-        sample_outputs_source.append(get_terraform_source_code(after))
+        sample_inputs_source.append(get_terraform_source_code(before, include_file_names=False))
+        sample_outputs_source.append(get_terraform_source_code(after, include_file_names=True))
 
 def list_to_string(input_list):
 
@@ -154,7 +157,7 @@ def get_file_contents(file):
     file_contents = list_to_string(file_contents)
     return file_contents
 
-def get_terraform_source_code(dir):
+def get_terraform_source_code(dir, include_file_names):
     current_sample_source_code = ""
 
     # For every file in the source directory...
@@ -162,15 +165,19 @@ def get_terraform_source_code(dir):
 
         # DO NOT process TestRecord.md file...
         if file_name != TEST_RECORD_FILE_NAME and file_name != '':
+            
             # Append source code for the current directory/file
-            current_file_source_code = ("###" 
-            + file_name 
-            + "###" 
-            + "\n" 
-            + get_file_contents(os.path.join(dir, file_name))
-            + "\n" 
-            + file_name 
-            + ":end\n")
+            if include_file_names:
+                current_file_source_code = ("###" 
+                + file_name 
+                + "###" 
+                + "\n" 
+                + get_file_contents(os.path.join(dir, file_name))
+                + "\n" 
+                + file_name 
+                + ":end\n")
+            else:
+                current_file_source_code = ("\n" + get_file_contents(os.path.join(dir, file_name)))
 
             current_sample_source_code += current_file_source_code
 
@@ -182,8 +189,6 @@ def file_exists(path):
 
 def parse_args():
     # Configure argParser for user-supplied arguments.
-
-    print_message("Parsing args...")
 
     argParser = argparse.ArgumentParser()
     argParser.add_argument("-s", 
@@ -206,31 +211,42 @@ def parse_args():
     return argParser.parse_args()
 
 def create_new_sample(sample_dir):
-    print_message("Creating new sample...")
 
     success = True
 
+    # Generate the new sample and get the Azure OpenAI completion string.
     completion = generate_new_sample(sample_dir)
-    return
 
-    if completion:
-        file_names = re.findall(r'###(.*)###', completion)
+    # Write the sample file(s).
+    write_new_sample(sample_dir, completion)
+
+def write_new_sample(sample_dir, file_contents):
+    # Write the completion string to the appropriate files
+    # based on the file markers within the completion.
+
+    print_message(f"{sample_dir}:", PrintDisposition.WARNING)
+    print_message(f"{os.path.basename(os.path.normpath(sample_dir))}", PrintDisposition.WARNING)
+    print_message(f"{output_path}", PrintDisposition.WARNING)
+
+    if file_contents:
+        file_names = re.findall(r'###(.*)###', file_contents)
 
         if file_names:
             for i in range(len(file_names)):
                 current_file = file_names[i]
 
-                beg_m = re.search('###'+ current_file + '###', completion)
+                beg_m = re.search('###'+ current_file + '###', file_contents)
                 if beg_m:
-                    end_m = re.search(current_file + ':end', completion)
+                    end_m = re.search(current_file + ':end', file_contents)
                     if end_m:
-                        sub = completion[(beg_m.span())[1]:(end_m.span())[0]]
+                        sub = file_contents[(beg_m.span())[1]:(end_m.span())[0]]
                         sub = sub.strip()
 
                         curr_qfn = os.path.join(new_sample_output_dir, current_file)
                         print_message("\tWriting file: " + curr_qfn)
-                        with open(curr_qfn, "w") as f:
-                            f.write(sub)
+
+                        #with open(curr_qfn, "w") as f:
+                            #f.write(sub)
                     else:
                         raise ValueError('Failed to find the end of the file name.')
                 else:
@@ -241,7 +257,6 @@ def create_new_sample(sample_dir):
         raise ValueError('Failed to get a valid completion from OpenAI.')
 
 def init_app(args):
-    print_message("Initializing app...")
 
     # Get the application path.
     application_path = ''
@@ -254,24 +269,27 @@ def init_app(args):
     if application_path == '':
         raise ValueError('Failed to get application path.')
 
-    # Set the debug path based on the application path.
-    global debug_path
-    debug_path = os.path.join(application_path, 'debug')
+    # Set the output path based on the application path.
+    global output_path
+    output_path = os.path.join(application_path, OUTPUT_DIRECTORY_NAME)
 
-    # If debug path doesn't exist, create it.
-    if not os.path.exists(debug_path):
+    # If output path doesn't exist, create it.
+    if not os.path.exists(output_path):
         try:
-            os.mkdir(debug_path)
+            os.mkdir(output_path)
         except OSError as error:
-            raise ValueError('Failed to create debug directory.') from error
+            raise ValueError('Failed to create output directory.') from error
         
     # Set the temp path based on the application path.
     global temp_path
-    temp_path = os.path.join(application_path, 'temp')
+    temp_path = os.path.join(application_path, TEMP_DIRECTORY_NAME)
 
     # If temp path doesn't exist, create it.
     if not os.path.exists(temp_path):
-        os.mkdir(temp_path)
+        try:
+            os.mkdir(temp_path)
+        except OSError as error:
+            raise ValueError('Failed to create temp directory.') from error
 
     # Set global debugging flag based on command-line arg.        
     if args.debug:
@@ -302,12 +320,15 @@ def get_before_and_after_sample_dirs():
         settings_before_and_after_dirs[input] = output
 
 def load_directories_to_process(args):
-    print_message("Loading directories to process...")
 
     global directories_to_process
 
-    # If the specified sample dir exists...
+    # If the specified sample dir (root) exists...
     if file_exists(args.sample_directory):
+
+        # Add the root to the list.
+        if len([1 for x in list(os.scandir(args.sample_directory)) if x.is_file()]) > 0:
+            directories_to_process.append(os.path.abspath(args.sample_directory))
 
         # If recursive flag is set...
         if args.recursive:
@@ -324,22 +345,27 @@ def load_directories_to_process(args):
     else:
         raise ValueError(f"Sample directory not found: {args.sample_directory}")
 
-def present_plan():
+def print_plan():
     print_message()
     print_message("***IMPORTANT***: The Skilling org pays for the use of the Azure OpenAI service based on the number of tokens in the request & response for each generated sample.", PrintDisposition.WARNING)
+    print_message()
     print_message("See the pricing article for more information: https://azure.microsoft.com/en-us/pricing/details/cognitive-services/openai-service/", PrintDisposition.WARNING)
+    print_message()
     print_message("Please review the plan below and reach out for guidance if you think the number of samples might be costly.", PrintDisposition.WARNING)
     print_message()
     print_message("Plan:", PrintDisposition.WARNING)
     print_message()
 
     # Print the number of directories to process.
-    print_message(f"\tNumber of directories to process (max 5 shown): {len(directories_to_process)}", PrintDisposition.WARNING)
+    print_message(f"\tNumber of directories to process (max {MAX_SAMPLES_TO_PRINT} shown): {len(directories_to_process)}", PrintDisposition.WARNING)
     for i in range(len(directories_to_process)): 
-        print_message(f"\t{i+1}: {directories_to_process[i]}", PrintDisposition.WARNING)
+        if i < MAX_SAMPLES_TO_PRINT:
+            print_message(f"\t{i+1}: {directories_to_process[i]}", PrintDisposition.WARNING)
+        else:
+            break
     print_message()
 
-    print_message("\tThe following inputs pairs will be used to generate the new sample(s):", PrintDisposition.WARNING)
+    print_message("\tThe following input pairs will be used to generate the new sample(s):", PrintDisposition.WARNING)
     for i, (before, after) in enumerate(settings_before_and_after_dirs.items()):
         print_message(f"\tBefore: {before}", PrintDisposition.WARNING)
         print_message(f"\tAfter: {after}", PrintDisposition.WARNING)
@@ -381,12 +407,11 @@ def main():
         # Initialize the application.
         init_app(args)
 
-        # Present the plan to the user and allow them to cancel
-        # or decide after each sample whether to continue.
-        present_plan()
+        # Print the plan to the user so that they know what is going to happen.
+        print_plan()
 
         # Get the source code for the samples that are being used as the prompt 
-        # to illustrate the "before and after" samples.
+        # to illustrate the "before and after" samples to Azure OpenAI.
         get_input_source(args)
 
         # For each directory to process...
@@ -398,10 +423,10 @@ def main():
                 # Create the new sample.
                 create_new_sample(sample_dir)
 
-                # Print success message to user.
-                print_message(f"Sample successfully migrated: {sample_dir}", PrintDisposition.SUCCESS)
+                # Print success message.
+                print_message(f"\nSample successfully migrated: {sample_dir}", PrintDisposition.SUCCESS)
 
     except ValueError as error:
-        print_message(f"Failed to migrate sample. {error}", PrintDisposition.ERROR)
+        print_message(f"Failed to migrate sample(s). {error}", PrintDisposition.ERROR)
 
 main()
