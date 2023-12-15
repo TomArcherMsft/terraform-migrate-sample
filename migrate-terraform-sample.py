@@ -9,20 +9,16 @@ import argparse
 from colorama import Fore, Back, Style
 import json
 from enum import Enum
+import shutil
 
 import openai
 from azure.identity import AzureCliCredential
 
-# Constants
+# Azure OpenAI settings
 OPENAI_API_BASE                 = 'https://openai-content-selfserv.openai.azure.com/'
 OPENAI_VERSION                  = '2023-07-01-preview' # This may change in the future.
 OPENAI_API_TYPE                 = 'azure_ad'
 OPENAI_ENGINE                   = 'gpt-4-32k-moreExpensivePerToken'
-
-SETTINGS_FILE_NAME              = 'settings.json'
-MAX_SAMPLES_TO_PRINT            = 5
-OUTPUT_DIRECTORY_NAME           = 'output'
-TEMP_DIRECTORY_NAME             = 'temp'
 
 openai.api_base     = OPENAI_API_BASE
 openai.api_version  = OPENAI_VERSION
@@ -32,10 +28,18 @@ token = credential.get_token("https://cognitiveservices.azure.com/.default")
 
 openai.api_type     = OPENAI_API_TYPE
 openai.api_key      = token.token
-        
+
+# App constants
+SETTINGS_FILE_NAME              = 'settings.json'
+PROMPT_FILE_NAME                = 'prompt.json'
+COMPLETION_FILE_NAME            = 'completion.txt'
+MAX_SAMPLES_TO_PRINT            = 5
+OUTPUT_DIRECTORY_NAME           = 'output'
+TEMP_DIRECTORY_NAME             = 'temp'
 TEST_RECORD_FILE_NAME           = 'TestRecord.md'
 
-# Globals
+# App globals
+sample_root_path                = ''
 settings_before_and_after_dirs  = {}
 directories_to_process          = []
 sample_inputs_source            = []
@@ -43,8 +47,6 @@ sample_outputs_source           = []
 debug_mode                      = False
 output_path                     = ''
 temp_path                       = ''
-new_sample_input_dir            = ''
-new_sample_output_dir           = ''
 
 class AppMode(Enum):
     PROCESS_ALL_SAMPLES_WITHOUT_INTERRUPTION    = 1
@@ -56,25 +58,32 @@ class PrintDisposition(Enum):
     SUCCESS = 1
     WARNING = 2
     ERROR   = 3
-    QUERY   = 4
-    STATUS  = 5
-    DEBUG   = 6
+    UI      = 4
+    DEBUG   = 5
+    STATUS  = 6
 
 def print_message(text = '', disp = PrintDisposition.STATUS):
-    if disp == PrintDisposition.SUCCESS:
-        color = Fore.GREEN
-    elif disp == PrintDisposition.WARNING:
-        color = Fore.YELLOW
-    elif disp == PrintDisposition.ERROR:
-        color = Fore.RED
-    elif disp == PrintDisposition.QUERY:
-        color = Fore.BLUE
-    elif disp == PrintDisposition.DEBUG:
-        color = Fore.MAGENTA
-    else: # Status only
-        color = Fore.WHITE
 
-    print(color + text + Style.RESET_ALL)
+    if disp == PrintDisposition.DEBUG:
+        if debug_mode:
+            color = Fore.MAGENTA
+            print(color + text + Style.RESET_ALL)
+    else:
+        if disp == PrintDisposition.SUCCESS:
+            color = Fore.GREEN
+        elif disp == PrintDisposition.WARNING:
+            color = Fore.YELLOW
+        elif disp == PrintDisposition.ERROR:
+            color = Fore.RED
+        elif disp == PrintDisposition.UI:
+            color = Fore.LIGHTBLUE_EX
+        else: # disp == PrintDisposition.STATUS
+            color = Fore.WHITE
+
+        if debug_mode:
+            print('\t' + color + text + Style.RESET_ALL)
+        else:
+            print(color + text + Style.RESET_ALL)
 
 def write_file(file_name, contents):
     try:
@@ -91,6 +100,7 @@ def write_dictionary_to_file(file_name, dictionary):
         print_message(f"Failed to write file: {error}", PrintDisposition.ERROR)
 
 def generate_new_sample(sample_dir):
+    print_message(f"Generating new sample...", PrintDisposition.DEBUG)
 
     completion = ''
 
@@ -106,7 +116,18 @@ def generate_new_sample(sample_dir):
         messages.append({"role": "user", "content": sample_source})
 
         if debug_mode:
-            write_dictionary_to_file('prompt.json', messages)
+            curr_sample_temp_path = get_normalized_path(sample_dir, temp_path)
+            curr_sample_temp_path = os.path.join(curr_sample_temp_path, PROMPT_FILE_NAME)
+            print_message(f"\tPrompt file path = {curr_sample_temp_path}", PrintDisposition.DEBUG)
+
+            try:
+                print_message(f"\tCreating directory path for {PROMPT_FILE_NAME}", PrintDisposition.DEBUG)
+                os.makedirs(os.path.dirname(curr_sample_temp_path),exist_ok=True)
+
+                print_message(f"\tWriting Azure OpenAI prompt to {curr_sample_temp_path}...", PrintDisposition.DEBUG)
+                write_dictionary_to_file(curr_sample_temp_path, messages)
+            except OSError as error:
+                raise ValueError(f"Failed to create temp directory. {error}") from error
 
         print_message(f"\nCalling OpenAI for {sample_dir}...")
         time.sleep(1)
@@ -124,7 +145,18 @@ def generate_new_sample(sample_dir):
     time.sleep(1)
 
     if debug_mode:
-        write_file('completion.txt', completion)
+        curr_sample_temp_path = get_normalized_path(sample_dir, temp_path)
+        curr_sample_temp_path = os.path.join(curr_sample_temp_path, COMPLETION_FILE_NAME)
+        print_message(f"\tCompletion file path = {curr_sample_temp_path}", PrintDisposition.DEBUG)
+
+        try:
+            print_message(f"\tCreating directory path for {COMPLETION_FILE_NAME}", PrintDisposition.DEBUG)
+            os.makedirs(os.path.dirname(curr_sample_temp_path),exist_ok=True)
+
+            print_message(f"\tWriting Azure OpenAI completion to {curr_sample_temp_path}...", PrintDisposition.DEBUG)
+            write_file(curr_sample_temp_path, completion)
+        except OSError as error:
+            raise ValueError(f"Failed to create temp directory. {error}") from error
     
     return completion
 
@@ -163,23 +195,25 @@ def get_terraform_source_code(dir, include_file_names):
     # For every file in the source directory...
     for file_name in os.listdir(dir):
 
-        # DO NOT process TestRecord.md file...
-        if file_name != TEST_RECORD_FILE_NAME and file_name != '':
-            
-            # Append source code for the current directory/file
-            if include_file_names:
-                current_file_source_code = ("###" 
-                + file_name 
-                + "###" 
-                + "\n" 
-                + get_file_contents(os.path.join(dir, file_name))
-                + "\n" 
-                + file_name 
-                + ":end\n")
-            else:
-                current_file_source_code = ("\n" + get_file_contents(os.path.join(dir, file_name)))
+        if os.path.isfile(os.path.join(dir, file_name)):        
 
-            current_sample_source_code += current_file_source_code
+            # DO NOT process TestRecord.md file...
+            if file_name != TEST_RECORD_FILE_NAME and file_name != '':
+                
+                # Append source code for the current directory/file
+                if include_file_names:
+                    current_file_source_code = ("###" 
+                    + file_name 
+                    + "###" 
+                    + "\n" 
+                    + get_file_contents(os.path.join(dir, file_name))
+                    + "\n" 
+                    + file_name 
+                    + ":end\n")
+                else:
+                    current_file_source_code = ("\n" + get_file_contents(os.path.join(dir, file_name)))
+
+                current_sample_source_code += current_file_source_code
 
     # Return the source code for the specified directory.
     return current_sample_source_code
@@ -220,13 +254,40 @@ def create_new_sample(sample_dir):
     # Write the sample file(s).
     write_new_sample(sample_dir, completion)
 
+def get_normalized_path(sample_dir, output_path):
+
+    # Get the last directory in the sample_root_path.
+    # Example: C:\temp\migrate-terraform-sample\batch ==> batch
+    relative_stub_root = os.path.basename(os.path.normpath(sample_root_path))
+
+    # Remove sample_root_path from sample_dir to get the sample's relative path.
+    # Example: C:\temp\migrate-terraform-sample\batch\basic\sample1\coolio ==> 
+    # basic\sample1\coolio
+    relative_sample_path = sample_dir.replace(sample_root_path, '')
+
+    # Remove leading slash from relative_sample_path.
+    relative_sample_path = relative_sample_path[1:]
+
+    # Join output_path + relative_stub_root.
+    # Example: C:\Users\tarcher\source\repos\migrate-terraform-sample\output
+    #        + batch
+    #        = C:\Users\tarcher\source\repos\migrate-terraform-sample\output\batch
+    output_dir = os.path.join(output_path, relative_stub_root)
+
+    # Join output_dir + relative_sample_path to get the final value to return.
+    # Example: C:\Users\tarcher\source\repos\migrate-terraform-sample\output\batch
+    #        + basic\sample1\coolio
+    #        = C:\Users\tarcher\source\repos\migrate-terraform-sample\output\batch\basic\sample1\coolio
+    output_dir = os.path.join(output_dir, relative_sample_path)
+
+    return output_dir
+
 def write_new_sample(sample_dir, file_contents):
     # Write the completion string to the appropriate files
     # based on the file markers within the completion.
 
-    print_message(f"{sample_dir}:", PrintDisposition.WARNING)
-    print_message(f"{os.path.basename(os.path.normpath(sample_dir))}", PrintDisposition.WARNING)
-    print_message(f"{output_path}", PrintDisposition.WARNING)
+    sample_output_path = get_normalized_path(sample_dir, output_path)
+    print_message(f"sample_output_path={sample_output_path}", PrintDisposition.DEBUG)
 
     if file_contents:
         file_names = re.findall(r'###(.*)###', file_contents)
@@ -242,11 +303,15 @@ def write_new_sample(sample_dir, file_contents):
                         sub = file_contents[(beg_m.span())[1]:(end_m.span())[0]]
                         sub = sub.strip()
 
-                        curr_qfn = os.path.join(new_sample_output_dir, current_file)
-                        print_message("\tWriting file: " + curr_qfn)
+                        curr_qfn = os.path.join(sample_output_path, current_file)
+                        print_message("\tWriting file: " + curr_qfn, PrintDisposition.DEBUG)
 
-                        #with open(curr_qfn, "w") as f:
-                            #f.write(sub)
+                        try:
+                            # Write the file.
+                            with open(curr_qfn, "w") as f:
+                                f.write(sub)
+                        except OSError as error:
+                            raise ValueError(f"Failed to write file. {error}") from error
                     else:
                         raise ValueError('Failed to find the end of the file name.')
                 else:
@@ -258,50 +323,92 @@ def write_new_sample(sample_dir, file_contents):
 
 def init_app(args):
 
+    # Set global debugging flag based on command-line arg.        
+    if args.debug:
+        global debug_mode
+        debug_mode = True
+
+    print_message("Initializing application...", PrintDisposition.DEBUG)
+
+    if debug_mode:
+        print_message("\tDebugging enabled.", PrintDisposition.DEBUG)
+
+    # Set the sample root path based on the command-line arg.
+    print_message("\tSetting sample root path...", PrintDisposition.DEBUG)
+    global sample_root_path
+    sample_root_path = os.path.abspath(args.sample_directory)
+    print_message(f"\tSample root path: {sample_root_path}", PrintDisposition.DEBUG)
+
+    if not file_exists(sample_root_path):
+        raise ValueError(f"Sample directory not found: {sample_root_path}")
+
     # Get the application path.
+    print_message("\tGetting application path...", PrintDisposition.DEBUG)
     application_path = ''
     if getattr(sys, 'frozen', False):
         application_path = os.path.dirname(sys.executable)
     elif __file__:
         application_path = os.path.dirname(__file__)
+    print_message(f"\tApplication path: {application_path}", PrintDisposition.DEBUG)
 
     # Verify that the application path was found.
     if application_path == '':
         raise ValueError('Failed to get application path.')
 
     # Set the output path based on the application path.
+    print_message("\tSetting output path...", PrintDisposition.DEBUG)
     global output_path
     output_path = os.path.join(application_path, OUTPUT_DIRECTORY_NAME)
+    print_message(f"\tOutput path: {output_path}", PrintDisposition.DEBUG)
 
-    # If output path doesn't exist, create it.
-    if not os.path.exists(output_path):
-        try:
-            os.mkdir(output_path)
-        except OSError as error:
-            raise ValueError('Failed to create output directory.') from error
-        
     # Set the temp path based on the application path.
+    print_message("\tSetting temp path...", PrintDisposition.DEBUG)
     global temp_path
     temp_path = os.path.join(application_path, TEMP_DIRECTORY_NAME)
+    print_message(f"\tTemp path: {temp_path}", PrintDisposition.DEBUG)
 
+    # If output path doesn't exist, create it.
+    print_message("\tIf output path doesn't exist, creating it...", PrintDisposition.DEBUG)
+    if not os.path.exists(output_path):
+        try:
+            print_message("\tCreating output path...", PrintDisposition.DEBUG)
+            os.mkdir(output_path)
+        except OSError as error:
+            raise ValueError(f"Failed to create output directory. {error}") from error
+        
     # If temp path doesn't exist, create it.
     if not os.path.exists(temp_path):
         try:
+            print_message("\tCreating temp path for sample...", PrintDisposition.DEBUG)
             os.mkdir(temp_path)
         except OSError as error:
-            raise ValueError('Failed to create temp directory.') from error
+            raise ValueError(f"Failed to create temp directory. {error}") from error
 
-    # Set global debugging flag based on command-line arg.        
-    if args.debug:
-        print_message("Debugging enabled.", PrintDisposition.WARNING)
-        global debug_mode
-        debug_mode = True
+    # If the sample output path exists, delete it.
+    print_message("\tCheck if sample output directory already exists...", PrintDisposition.DEBUG)
+    sample_output_path = get_normalized_path(sample_root_path, output_path)
+    if os.path.exists(sample_output_path):
+        print_message(f"\tDeleting sample output path: {sample_output_path}", PrintDisposition.DEBUG)
+        shutil.rmtree(sample_output_path, ignore_errors=True)
 
-    get_before_and_after_sample_dirs()
+    # If the sample temp path exists, delete it.
+    print_message("\tCheck if sample temp directory already exists...", PrintDisposition.DEBUG)
+    sample_temp_path = get_normalized_path(sample_root_path, temp_path)
+    if os.path.exists(sample_temp_path):
+        print_message(f"\tDeleting sample temp path: {sample_temp_path}", PrintDisposition.DEBUG)
+        shutil.rmtree(sample_temp_path, ignore_errors=True)
 
-    load_directories_to_process(args)
+    # Get directory names for before and after samples.
+    get_before_and_after_sample_dirs_from_settings_file()
 
-def get_before_and_after_sample_dirs():
+    # Get the directories (samples) to process.
+    get_directories_to_process(args)
+
+    print_message("Application initialized.", PrintDisposition.DEBUG)
+    
+def get_before_and_after_sample_dirs_from_settings_file():
+
+    print_message("\tGetting before and after sample directories from settings file...", PrintDisposition.DEBUG)
 
     try:
         # Open the Inputs file.
@@ -309,7 +416,7 @@ def get_before_and_after_sample_dirs():
             # Load the JSON inputs file.
             inputs = json.load(inputs_file)
     except OSError as error:
-        raise ValueError(f"Failed to open settings file ({SETTINGS_FILE_NAME}).") from error
+        raise ValueError(f"Failed to open settings file ({SETTINGS_FILE_NAME}). {error}") from error
 
     # Each line is an input and there needs to be at least one line (input).
     if 1 > len(inputs):
@@ -319,22 +426,24 @@ def get_before_and_after_sample_dirs():
     for i, (input, output) in enumerate(inputs.items()):
         settings_before_and_after_dirs[input] = output
 
-def load_directories_to_process(args):
+def get_directories_to_process(args):
+
+    print_message("\tGetting directories to process...", PrintDisposition.DEBUG)
 
     global directories_to_process
 
     # If the specified sample dir (root) exists...
-    if file_exists(args.sample_directory):
+    if file_exists(sample_root_path):
 
         # Add the root to the list.
-        if len([1 for x in list(os.scandir(args.sample_directory)) if x.is_file()]) > 0:
-            directories_to_process.append(os.path.abspath(args.sample_directory))
+        if len([1 for x in list(os.scandir(sample_root_path)) if x.is_file()]) > 0:
+            directories_to_process.append(sample_root_path)
 
         # If recursive flag is set...
         if args.recursive:
 
             # For every directory in the sample dir...
-            for root, dirs, files in os.walk(args.sample_directory):
+            for root, dirs, files in os.walk(sample_root_path):
 
                 # For every directory in the sample dir...
                 for dir in dirs:
@@ -343,7 +452,7 @@ def load_directories_to_process(args):
                     if len([1 for x in list(os.scandir(os.path.join(root, dir))) if x.is_file()]) > 0:
                         directories_to_process.append(os.path.abspath(os.path.join(root, dir)))
     else:
-        raise ValueError(f"Sample directory not found: {args.sample_directory}")
+        raise ValueError(f"Sample directory not found: {sample_root_path}")
 
 def print_plan():
     print_message()
@@ -353,30 +462,30 @@ def print_plan():
     print_message()
     print_message("Please review the plan below and reach out for guidance if you think the number of samples might be costly.", PrintDisposition.WARNING)
     print_message()
-    print_message("Plan:", PrintDisposition.WARNING)
+    print_message("Plan:", PrintDisposition.UI)
     print_message()
 
     # Print the number of directories to process.
-    print_message(f"\tNumber of directories to process (max {MAX_SAMPLES_TO_PRINT} shown): {len(directories_to_process)}", PrintDisposition.WARNING)
+    print_message(f"\tNumber of directories to process (max {MAX_SAMPLES_TO_PRINT} shown): {len(directories_to_process)}", PrintDisposition.UI)
     for i in range(len(directories_to_process)): 
         if i < MAX_SAMPLES_TO_PRINT:
-            print_message(f"\t{i+1}: {directories_to_process[i]}", PrintDisposition.WARNING)
+            print_message(f"\t{i+1}: {directories_to_process[i]}", PrintDisposition.UI)
         else:
             break
     print_message()
 
-    print_message("\tThe following input pairs will be used to generate the new sample(s):", PrintDisposition.WARNING)
+    print_message("\tThe following input pairs will be used to generate the new sample(s):", PrintDisposition.UI)
     for i, (before, after) in enumerate(settings_before_and_after_dirs.items()):
-        print_message(f"\tBefore: {before}", PrintDisposition.WARNING)
-        print_message(f"\tAfter: {after}", PrintDisposition.WARNING)
+        print_message(f"\tBefore: {before}", PrintDisposition.UI)
+        print_message(f"\tAfter: {after}", PrintDisposition.UI)
         print_message()
 
 def confirm_continuation_for_current_sample(sample_dir):
     process_current_sample = True
 
-    print_message("Are you sure you want to perform this action?", PrintDisposition.QUERY)
-    print_message(f"Migrating sample directory: {sample_dir}", PrintDisposition.QUERY)
-    print_message("[Y] Yes, process this sample [A] Yes to All, [No] Skip this sample, [Q] Quit the application.", PrintDisposition.QUERY)
+    print_message(f"Migrate sample directory: {sample_dir}", PrintDisposition.UI)
+    print_message("Are you sure you want to perform this action?", PrintDisposition.UI)
+    print_message("[Y] Yes, process this sample [A] Yes to All, [No] Skip this sample, [Q] Quit the application.", PrintDisposition.UI)
 
     while True:
         user_response = keyboard.read_key().upper()
@@ -424,9 +533,9 @@ def main():
                 create_new_sample(sample_dir)
 
                 # Print success message.
-                print_message(f"\nSample successfully migrated: {sample_dir}", PrintDisposition.SUCCESS)
+                print_message(f"Sample successfully migrated: {sample_dir}", PrintDisposition.SUCCESS)
 
     except ValueError as error:
-        print_message(f"Failed to migrate sample(s). {error}", PrintDisposition.ERROR)
+        print_message(f"\nFailed to migrate sample(s). {error}", PrintDisposition.ERROR)
 
 main()
