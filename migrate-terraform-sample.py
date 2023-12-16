@@ -513,7 +513,7 @@ def confirm_continuation_for_current_sample(sample_dir):
 
     return process_current_sample
 
-def delete_previous_sample(sample_dir):
+def delete_previous_sample_dirs(sample_dir):
     # If the sample output path exists, delete it.
     sample_output_path = get_normalized_path(sample_dir, output_path)
     if os.path.exists(sample_output_path):
@@ -548,7 +548,7 @@ def main():
             or confirm_continuation_for_current_sample(sample_dir)):
 
                 # If the sample directories (output & temp) exists, delete them.
-                delete_previous_sample(sample_dir)
+                delete_previous_sample_dirs(sample_dir)
 
                 # Create the new sample.
                 create_new_sample(sample_dir)
