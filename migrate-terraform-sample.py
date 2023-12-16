@@ -34,7 +34,7 @@ SETTINGS_FILE_NAME              = 'settings.json'
 PROMPT_FILE_NAME                = 'prompt.json'
 COMPLETION_FILE_NAME            = 'completion.txt'
 MAX_SAMPLES_TO_PRINT            = 5
-OUTPUT_DIRECTORY_NAME           = 'output'
+OUTPUT_DIRECTORY_NAME           = 'outputs'
 TEMP_DIRECTORY_NAME             = 'temp'
 TEST_RECORD_FILE_NAME           = 'TestRecord.md'
 
@@ -236,13 +236,13 @@ def parse_args():
     argParser.add_argument("-r", 
                            "--recursive", 
                            action=argparse.BooleanOptionalAction,
-                           help="Processes all subdirectories of specified 'input sample directory'.", 
+                           help="Processes all subdirectories of specified SAMPLE_DIRECTORY'.", 
                            required=False)
 
     argParser.add_argument("-d", 
                            "--debug", 
                            action=argparse.BooleanOptionalAction,
-                           help="Outputs files to help with debugging.", 
+                           help="Outputs verbose messaging and files to help with debugging.", 
                            required=False)
 
     return argParser.parse_args()
@@ -388,18 +388,6 @@ def init_app(args):
         except OSError as error:
             raise ValueError(f"Failed to create temp directory. {error}") from error
 
-    # If the sample output path exists, delete it.
-    sample_output_path = get_normalized_path(sample_root_path, output_path)
-    if os.path.exists(sample_output_path):
-        print_message(f"Deleting sample output path: {sample_output_path}", PrintDisposition.DEBUG)
-        shutil.rmtree(sample_output_path, ignore_errors=True)
-
-    # If the sample temp path exists, delete it.
-    sample_temp_path = get_normalized_path(sample_root_path, temp_path)
-    if os.path.exists(sample_temp_path):
-        print_message(f"Deleting sample temp path: {sample_temp_path}", PrintDisposition.DEBUG)
-        shutil.rmtree(sample_temp_path, ignore_errors=True)
-
     # Get directory names for before and after samples.
     get_before_and_after_sample_dirs_from_settings_file()
 
@@ -522,6 +510,19 @@ def confirm_continuation_for_current_sample(sample_dir):
 
     return process_current_sample
 
+def delete_previous_sample(sample_dir):
+    # If the sample output path exists, delete it.
+    sample_output_path = get_normalized_path(sample_dir, output_path)
+    if os.path.exists(sample_output_path):
+        print_message(f"Deleting sample output path: {sample_output_path}", PrintDisposition.DEBUG)
+        shutil.rmtree(sample_output_path, ignore_errors=True)
+
+    # If the sample temp path exists, delete it.
+    sample_temp_path = get_normalized_path(sample_dir, temp_path)
+    if os.path.exists(sample_temp_path):
+        print_message(f"Deleting sample temp path: {sample_temp_path}", PrintDisposition.DEBUG)
+        shutil.rmtree(sample_temp_path, ignore_errors=True)
+
 def main():
     try:
         # Get the command-line args (parameters).
@@ -542,6 +543,9 @@ def main():
 
             if (app_mode == AppMode.PROCESS_ALL_SAMPLES_WITHOUT_INTERRUPTION
             or confirm_continuation_for_current_sample(sample_dir)):
+
+                # If the sample directories (output & temp) exists, delete them.
+                delete_previous_sample(sample_dir)
 
                 # Create the new sample.
                 create_new_sample(sample_dir)
