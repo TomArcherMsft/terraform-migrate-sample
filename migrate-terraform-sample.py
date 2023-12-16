@@ -448,33 +448,36 @@ def get_directories_to_process(args):
     else:
         raise ValueError(f"Sample directory not found: {sample_root_path}")
 
-def print_plan():
+def print_plan(args):
     print_message("\nPrinting the plan...", PrintDisposition.DEBUG, override_indent=True)
 
-    print_message()
-    print_message("***IMPORTANT***: The Skilling org pays for the use of the Azure OpenAI service based on the number of tokens in the request & response for each generated sample.", PrintDisposition.WARNING)
-    print_message()
-    print_message("See the pricing article for more information: https://azure.microsoft.com/en-us/pricing/details/cognitive-services/openai-service/", PrintDisposition.WARNING)
-    print_message()
-    print_message("Please review the plan below and reach out for guidance if you think the number of samples might be costly.", PrintDisposition.WARNING)
-    print_message()
-    print_message("Plan:", PrintDisposition.UI)
-    print_message()
-
-    # Print the number of directories to process.
-    print_message(f"Number of directories to process (max {MAX_SAMPLES_TO_PRINT} shown): {len(directories_to_process)}", PrintDisposition.UI)
-    for i in range(len(directories_to_process)): 
-        if i < MAX_SAMPLES_TO_PRINT:
-            print_message(f"\t{i+1}: {directories_to_process[i]}", PrintDisposition.UI)
-        else:
-            break
-    print_message()
-
-    print_message("\tThe following input pairs will be used to generate the new sample(s):", PrintDisposition.UI)
-    for i, (before, after) in enumerate(settings_before_and_after_dirs.items()):
-        print_message(f"\tBefore: {before}", PrintDisposition.UI)
-        print_message(f"\tAfter: {after}", PrintDisposition.UI)
+    if 0 == len(directories_to_process):
+        print_message(f"There are no files to process in the specified directory: '{sample_root_path}'" + (" (including its subdirectories)" if args.recursive else "") + ".", PrintDisposition.UI)
+    else:
         print_message()
+        print_message("***IMPORTANT***: The Skilling org pays for the use of the Azure OpenAI service based on the number of tokens in the request & response for each generated sample.", PrintDisposition.WARNING)
+        print_message()
+        print_message("See the pricing article for more information: https://azure.microsoft.com/en-us/pricing/details/cognitive-services/openai-service/", PrintDisposition.WARNING)
+        print_message()
+        print_message("Please review the plan below and reach out for guidance if you think the number of samples might be costly.", PrintDisposition.WARNING)
+        print_message()
+        print_message("Plan:", PrintDisposition.UI)
+        print_message()
+
+        # Print the number of directories to process.
+        print_message(f"Number of directories to process (max {MAX_SAMPLES_TO_PRINT} shown): {len(directories_to_process)}", PrintDisposition.UI)
+        for i in range(len(directories_to_process)): 
+            if i < MAX_SAMPLES_TO_PRINT:
+                print_message(f"\t{i+1}: {directories_to_process[i]}", PrintDisposition.UI)
+            else:
+                break
+        print_message()
+
+        print_message("\tThe following input pairs will be used to generate the new sample(s):", PrintDisposition.UI)
+        for i, (before, after) in enumerate(settings_before_and_after_dirs.items()):
+            print_message(f"\tBefore: {before}", PrintDisposition.UI)
+            print_message(f"\tAfter: {after}", PrintDisposition.UI)
+            print_message()
 
     print_message("Printed the plan.", PrintDisposition.DEBUG, override_indent=True)
 
@@ -532,7 +535,7 @@ def main():
         init_app(args)
 
         # Print the plan to the user so that they know what is going to happen.
-        print_plan()
+        print_plan(args)
 
         # Get the source code for the samples that are being used as the prompt 
         # to illustrate the "before and after" samples to Azure OpenAI.
