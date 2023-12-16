@@ -83,7 +83,7 @@ def print_message(text = '', disp = PrintDisposition.STATUS, override_indent = F
     else: # disp == PrintDisposition.STATUS
         color = Fore.WHITE
 
-    print(color + text + Style.RESET_ALL)
+    print(color + text + Style.RESET_ALL, flush=True)
 
 def write_file(file_name, contents):
     try:
@@ -100,7 +100,7 @@ def write_dictionary_to_file(file_name, dictionary):
         print_message(f"Failed to write file: {error}", PrintDisposition.ERROR)
 
 def generate_new_sample(sample_dir):
-    print_message(f"Generating new sample...", PrintDisposition.DEBUG, True)
+    print_message(f"\nGenerating new sample...", PrintDisposition.DEBUG, override_indent=True)
 
     completion = ''
 
@@ -115,21 +115,24 @@ def generate_new_sample(sample_dir):
         sample_source = get_terraform_source_code(sample_dir, include_file_names=False)
         messages.append({"role": "user", "content": sample_source})
 
-        if debug_mode:
+        if debug_mode: # Write the prompt to a file.
             curr_sample_temp_path = get_normalized_path(sample_dir, temp_path)
             curr_sample_temp_path = os.path.join(curr_sample_temp_path, PROMPT_FILE_NAME)
-            print_message(f"Prompt file path = {curr_sample_temp_path}", PrintDisposition.DEBUG)
+            print_message(f"Prompt file path: {curr_sample_temp_path}", PrintDisposition.DEBUG)
 
             try:
-                print_message(f"Creating directory path for {PROMPT_FILE_NAME}", PrintDisposition.DEBUG)
+                print_message(f"Creating directory path: {curr_sample_temp_path}", PrintDisposition.DEBUG)
                 os.makedirs(os.path.dirname(curr_sample_temp_path),exist_ok=True)
 
-                print_message(f"Writing Azure OpenAI prompt to {curr_sample_temp_path}...", PrintDisposition.DEBUG)
+                print_message(f"Writing Azure OpenAI prompt to: {curr_sample_temp_path}...", PrintDisposition.DEBUG)
                 write_dictionary_to_file(curr_sample_temp_path, messages)
             except OSError as error:
                 raise ValueError(f"Failed to create temp directory. {error}") from error
 
-        print_message(f"\nCalling OpenAI for {sample_dir}...")
+        special_chars = '\n'
+        if debug_mode:
+            special_chars = special_chars + '\t'
+        print_message(f"{special_chars}Calling OpenAI for {sample_dir}...")
         time.sleep(1)
 
         response = openai.ChatCompletion.create(engine=OPENAI_ENGINE,
@@ -144,16 +147,16 @@ def generate_new_sample(sample_dir):
 
     time.sleep(1)
 
-    if debug_mode:
+    if debug_mode: # Write the completion to a file.
         curr_sample_temp_path = get_normalized_path(sample_dir, temp_path)
         curr_sample_temp_path = os.path.join(curr_sample_temp_path, COMPLETION_FILE_NAME)
-        print_message(f"Completion file path = {curr_sample_temp_path}", PrintDisposition.DEBUG)
+        print_message(f"Completion file path: {curr_sample_temp_path}", PrintDisposition.DEBUG)
 
         try:
-            print_message(f"Creating directory path for {COMPLETION_FILE_NAME}", PrintDisposition.DEBUG)
+            print_message(f"Creating directory path: {curr_sample_temp_path}", PrintDisposition.DEBUG)
             os.makedirs(os.path.dirname(curr_sample_temp_path),exist_ok=True)
 
-            print_message(f"Writing Azure OpenAI completion to {curr_sample_temp_path}...", PrintDisposition.DEBUG)
+            print_message(f"Writing Azure OpenAI completion to: {curr_sample_temp_path}...", PrintDisposition.DEBUG)
             write_file(curr_sample_temp_path, completion)
         except OSError as error:
             raise ValueError(f"Failed to create temp directory. {error}") from error
@@ -286,8 +289,13 @@ def write_new_sample(sample_dir, file_contents):
     # Write the completion string to the appropriate files
     # based on the file markers within the completion.
 
+    # Get the output path for the sample.
     sample_output_path = get_normalized_path(sample_dir, output_path)
     print_message(f"sample_output_path={sample_output_path}", PrintDisposition.DEBUG)
+
+    # Create the directory for the sample.
+    print_message(f"Creating directory for sample output: {sample_output_path}", PrintDisposition.DEBUG)
+    os.makedirs(sample_output_path, exist_ok = True)
 
     if file_contents:
         file_names = re.findall(r'###(.*)###', file_contents)
@@ -309,6 +317,7 @@ def write_new_sample(sample_dir, file_contents):
                         try:
                             # Write the file.
                             with open(curr_qfn, "w") as f:
+                                print_message("", PrintDisposition.DEBUG)
                                 f.write(sub)
                         except OSError as error:
                             raise ValueError(f"Failed to write file. {error}") from error
@@ -334,7 +343,6 @@ def init_app(args):
         print_message("Debugging enabled.", PrintDisposition.DEBUG)
 
     # Set the sample root path based on the command-line arg.
-    print_message("Setting sample root path...", PrintDisposition.DEBUG)
     global sample_root_path
     sample_root_path = os.path.abspath(args.sample_directory)
     print_message(f"Sample root path: {sample_root_path}", PrintDisposition.DEBUG)
@@ -343,7 +351,6 @@ def init_app(args):
         raise ValueError(f"Sample directory not found: {sample_root_path}")
 
     # Get the application path.
-    print_message("Getting application path...", PrintDisposition.DEBUG)
     application_path = ''
     if getattr(sys, 'frozen', False):
         application_path = os.path.dirname(sys.executable)
@@ -356,19 +363,16 @@ def init_app(args):
         raise ValueError('Failed to get application path.')
 
     # Set the output path based on the application path.
-    print_message("Setting output path...", PrintDisposition.DEBUG)
     global output_path
     output_path = os.path.join(application_path, OUTPUT_DIRECTORY_NAME)
     print_message(f"Output path: {output_path}", PrintDisposition.DEBUG)
 
     # Set the temp path based on the application path.
-    print_message("Setting temp path...", PrintDisposition.DEBUG)
     global temp_path
     temp_path = os.path.join(application_path, TEMP_DIRECTORY_NAME)
     print_message(f"Temp path: {temp_path}", PrintDisposition.DEBUG)
 
     # If output path doesn't exist, create it.
-    print_message("If output path doesn't exist, creating it...", PrintDisposition.DEBUG)
     if not os.path.exists(output_path):
         try:
             print_message("Creating output path...", PrintDisposition.DEBUG)
@@ -385,14 +389,12 @@ def init_app(args):
             raise ValueError(f"Failed to create temp directory. {error}") from error
 
     # If the sample output path exists, delete it.
-    print_message("Check if sample output directory already exists...", PrintDisposition.DEBUG)
     sample_output_path = get_normalized_path(sample_root_path, output_path)
     if os.path.exists(sample_output_path):
         print_message(f"Deleting sample output path: {sample_output_path}", PrintDisposition.DEBUG)
         shutil.rmtree(sample_output_path, ignore_errors=True)
 
     # If the sample temp path exists, delete it.
-    print_message("Check if sample temp directory already exists...", PrintDisposition.DEBUG)
     sample_temp_path = get_normalized_path(sample_root_path, temp_path)
     if os.path.exists(sample_temp_path):
         print_message(f"Deleting sample temp path: {sample_temp_path}", PrintDisposition.DEBUG)
@@ -424,6 +426,10 @@ def get_before_and_after_sample_dirs_from_settings_file():
 
     # For each line in the file (representing a sample)...
     for i, (input, output) in enumerate(inputs.items()):
+        if not file_exists(input):
+            raise ValueError(f"[{SETTINGS_FILE_NAME}] Input file not found: {input}")
+        if not file_exists(output):
+            raise ValueError(f"[{SETTINGS_FILE_NAME}] Output file not found: {output}")
         settings_before_and_after_dirs[input] = output
 
 def get_directories_to_process(args):
@@ -494,6 +500,8 @@ def confirm_continuation_for_current_sample(sample_dir):
     print_message("[Y] Yes, process this sample [A] Yes to All, [No] Skip this sample, [Q] Quit the application.", PrintDisposition.UI)
 
     while True:
+        time.sleep(0.3)
+
         user_response = keyboard.read_key().upper()
 
         global app_mode
@@ -539,7 +547,7 @@ def main():
                 create_new_sample(sample_dir)
 
                 # Print success message.
-                print_message(f"Sample successfully migrated: {sample_dir}", PrintDisposition.SUCCESS)
+                print_message(f"\nSample successfully migrated: {sample_dir}", PrintDisposition.SUCCESS)
 
     except ValueError as error:
         print_message(f"\nFailed to migrate sample(s). {error}", PrintDisposition.ERROR)

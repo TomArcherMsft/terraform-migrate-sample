@@ -1,6 +1,8 @@
 {
-  "c:\\temp\\update-terraform-sample\\inputs\\azure-dns-new-zone":
+  "c:\\temp\\tom-fitzmacken-tf-from-bicep\\inputs\\azure-dns-new-zone":
   "C:\\Users\\tarcher\\source\\repos\\terraform\\quickstart\\101-dns_zone",
-  "c:\\temp\\update-terraform-sample\\inputs\\key-vault-key":
-  "C:\\Users\\tarcher\\source\\repos\\terraform\\quickstart\\101-key-vault-key"
+  "c:\\temp\\tom-fitzmacken-tf-from-bicep\\inputs\\key-vault-key":
+  "C:\\Users\\tarcher\\source\\repos\\terraform\\quickstart\\101-key-vault-key",
+  "c:\\users\\tarcher\\source\\repos\\migrate-terraform-sample\\input\\batch\\basic":
+  "c:\\users\\tarcher\\source\\repos\\migrate-terraform-sample\\test\\basic"
 }
