@@ -132,7 +132,7 @@ def generate_new_sample(sample_dir):
         special_chars = '\n'
         if debug_mode:
             special_chars = special_chars + '\t'
-        print_message(f"{special_chars}Calling OpenAI for {sample_dir}...")
+        print_message(f"{special_chars}Calling OpenAI for: '{sample_dir}'...")
         time.sleep(1)
 
         response = openai.ChatCompletion.create(engine=OPENAI_ENGINE,
@@ -246,16 +246,6 @@ def parse_args():
                            required=False)
 
     return argParser.parse_args()
-
-def create_new_sample(sample_dir):
-
-    success = True
-
-    # Generate the new sample and get the Azure OpenAI completion string.
-    completion = generate_new_sample(sample_dir)
-
-    # Write the sample file(s).
-    write_new_sample(sample_dir, completion)
 
 def get_normalized_path(sample_dir, output_path):
 
@@ -430,7 +420,7 @@ def get_directories_to_process(args):
     if file_exists(sample_root_path):
 
         # Add the root to the list.
-        if len([1 for x in list(os.scandir(sample_root_path)) if x.is_file()]) > 0:
+        if len([1 for x in list(os.scandir(sample_root_path)) if x.is_file() and ".tf" == (os.path.splitext(x.name)[1].lower())]) > 0:
             directories_to_process.append(sample_root_path)
 
         # If recursive flag is set...
@@ -443,7 +433,7 @@ def get_directories_to_process(args):
                 for dir in dirs:
 
                     # Add the directory to the list.
-                    if len([1 for x in list(os.scandir(os.path.join(root, dir))) if x.is_file()]) > 0:
+                    if len([1 for x in list(os.scandir(os.path.join(root, dir))) if x.is_file() and ".tf" == (os.path.splitext(x.name)[1].lower())]) > 0:
                         directories_to_process.append(os.path.abspath(os.path.join(root, dir)))
     else:
         raise ValueError(f"Sample directory not found: {sample_root_path}")
@@ -471,22 +461,36 @@ def print_plan(args):
                 print_message(f"\t{i+1}: {directories_to_process[i]}", PrintDisposition.UI)
             else:
                 break
+        
+        # If there are more than MAX_SAMPLES_TO_PRINT directories to process...
+        if len(directories_to_process) > MAX_SAMPLES_TO_PRINT:
+            print_message(f"\t{MAX_SAMPLES_TO_PRINT+1}-{len(directories_to_process)}: Not shown for brevity.", PrintDisposition.UI)
+
         print_message()
 
-        print_message("\tThe following input pairs will be used to generate the new sample(s):", PrintDisposition.UI)
+        relative_stub_root = os.path.basename(os.path.normpath(sample_root_path))
+        print_message(f"The new sample(s) are written to: '{os.path.join(output_path, relative_stub_root)}...'", PrintDisposition.UI)
+
+        print_message()
+
+        if debug_mode:
+            print_message(f"The debug files are written to: '{os.path.join(temp_path, relative_stub_root)}...'", PrintDisposition.DEBUG)
+            print_message()
+
+        print_message("The following input pairs will be used to generate the new sample(s):", PrintDisposition.UI)
         for i, (before, after) in enumerate(settings_before_and_after_dirs.items()):
             print_message(f"\tBefore: {before}", PrintDisposition.UI)
             print_message(f"\tAfter: {after}", PrintDisposition.UI)
-            print_message()
 
     print_message("Printed the plan.", PrintDisposition.DEBUG, override_indent=True)
 
-def confirm_continuation_for_current_sample(sample_dir):
+def confirm_continuation_for_current_sample(index, total, sample_dir):
     print_message("\nConfirming continuation for current sample...", PrintDisposition.DEBUG, override_indent=True)
 
     process_current_sample = True
 
-    print_message(f"Migrate sample directory: {sample_dir}", PrintDisposition.UI)
+    print_message()
+    print_message(f"Migrate sample directory {index} of {total}: {sample_dir}", PrintDisposition.UI)
     print_message("Are you sure you want to perform this action?", PrintDisposition.UI)
     print_message("[Y] Yes, process this sample [A] Yes to All, [No] Skip this sample, [Q] Quit the application.", PrintDisposition.UI)
 
@@ -542,16 +546,19 @@ def main():
         get_input_source(args)
 
         # For each directory to process...
-        for sample_dir in directories_to_process:
+        for i, sample_dir in enumerate(directories_to_process):
 
             if (app_mode == AppMode.PROCESS_ALL_SAMPLES_WITHOUT_INTERRUPTION
-            or confirm_continuation_for_current_sample(sample_dir)):
+            or confirm_continuation_for_current_sample(i+1, len(directories_to_process), sample_dir)):
 
                 # If the sample directories (output & temp) exists, delete them.
                 delete_previous_sample_dirs(sample_dir)
 
-                # Create the new sample.
-                create_new_sample(sample_dir)
+                # Generate the new sample and get the Azure OpenAI completion string.
+                completion = generate_new_sample(sample_dir)
+
+                # Write the sample file(s).
+                write_new_sample(sample_dir, completion)
 
                 # Print success message.
                 print_message(f"\nSample successfully migrated: {sample_dir}", PrintDisposition.SUCCESS)
