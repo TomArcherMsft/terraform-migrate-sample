@@ -1,6 +1,6 @@
 {
-  "c:\\users\\tarcher\\source\\repos\\migrate-terraform-sample\\examples\\inputs\\api-management":
-  "c:\\users\\tarcher\\source\\repos\\migrate-terraform-sample\\examples\\outputs\\api-management"
-  ,"c:\\users\\tarcher\\source\\repos\\migrate-terraform-sample\\examples\\inputs\\batch\\basic":
-  "c:\\users\\tarcher\\source\\repos\\migrate-terraform-sample\\examples\\outputs\\batch\\basic"
+  ".\\examples\\inputs\\api-management":
+  ".\\examples\\outputs\\api-management"
+  ,".\\examples\\inputs\\batch\\basic":
+  ".\\examples\\outputs\\batch\\basic"
 }

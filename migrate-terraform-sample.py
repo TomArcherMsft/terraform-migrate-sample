@@ -198,7 +198,7 @@ def get_terraform_source_code(dir, include_file_names):
     # For every file in the source directory...
     for file_name in os.listdir(dir):
 
-        if os.path.isfile(os.path.join(dir, file_name)):        
+        if os.path.isfile(os.path.join(dir, file_name)):
 
             # DO NOT process TestRecord.md file...
             if file_name != TEST_RECORD_FILE_NAME and file_name != '':
@@ -479,8 +479,8 @@ def print_plan(args):
 
         print_message("The following input pairs will be used to generate the new sample(s):", PrintDisposition.UI)
         for i, (before, after) in enumerate(settings_before_and_after_dirs.items()):
-            print_message(f"\tBefore: {before}", PrintDisposition.UI)
-            print_message(f"\tAfter: {after}", PrintDisposition.UI)
+            print_message(f"\tBefore: {os.path.abspath(before)}", PrintDisposition.UI)
+            print_message(f"\tAfter: {os.path.abspath(after)}", PrintDisposition.UI)
 
     print_message("Printed the plan.", PrintDisposition.DEBUG, override_indent=True)
 
