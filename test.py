@@ -1,3 +1,5 @@
 import os
 
-print(os.path.basename(os.path.normpath('https://raw.githubusercontent.com/TomArcherMsft/migrate-terraform-sample/main/prompt-inputs/api-management/before/main.tf')))
+# Read ./temp/tom/prompt.json
+with open(os.path.join(os.path.dirname(__file__), 'temp', 'tom', 'prompt.json')) as f:
+    print(f.read().splitlines())

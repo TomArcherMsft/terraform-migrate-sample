@@ -188,7 +188,7 @@ def get_input_source():
             for file in after_files:
                 print_message(f"\t\t{file}", PrintDisposition.DEBUG)
                 file_name = os.path.basename(os.path.normpath(file))
-                after_source_code = ("###" 
+                after_source_code += ("###" 
                                     + file_name 
                                     + "###" 
                                     + "\n" 
