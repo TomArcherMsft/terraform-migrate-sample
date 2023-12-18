@@ -4,7 +4,7 @@ import urllib
 from urllib.request import urlopen
 import urllib3
 
-file_url = "https://raw.githubusercontent.com/TomArcherMsft/migrate-terraform-sample/main/prompt_inputs.json"
+file_url = "https://raw.githubusercontent.com/TomArcherMsft/migrate-terraform-sample/main/prompt-inputs.json"
 
 def t1():
     for line in urllib.request.urlopen(file_url):
