@@ -2,14 +2,13 @@ import sys
 import os
 import keyboard
 import time
-import datetime
 import re
-import subprocess
 import argparse
 from colorama import Fore, Back, Style
 import json
 from enum import Enum
 import shutil
+import requests
 
 import openai
 from azure.identity import AzureCliCredential
@@ -30,7 +29,7 @@ openai.api_type     = OPENAI_API_TYPE
 openai.api_key      = token.token
 
 # App constants
-SETTINGS_FILE_NAME              = 'settings.json'
+PROMPT_INPUT_FILE_NAME          = "https://raw.githubusercontent.com/TomArcherMsft/migrate-terraform-sample/main/prompt-inputs/prompt-inputs.json"
 PROMPT_FILE_NAME                = 'prompt.json'
 COMPLETION_FILE_NAME            = 'completion.txt'
 MAX_SAMPLES_TO_PRINT            = 5
@@ -163,11 +162,46 @@ def generate_new_sample(sample_dir):
     
     return completion
 
-def get_input_source(args):
+def get_input_source():
 
-    for i, (before, after) in enumerate(settings_before_and_after_dirs.items()):
-        sample_inputs_source.append(get_terraform_source_code(before, include_file_names=False))
-        sample_outputs_source.append(get_terraform_source_code(after, include_file_names=True))
+    print_message('Getting before & after versions of samples that have been migrated.', PrintDisposition.DEBUG)
+
+    r = requests.get(PROMPT_INPUT_FILE_NAME)
+    if 200 == r.status_code:
+        # load the contents of the file into a json variable
+        json_data = r.json()
+
+        for i, (sample_name, sample_files) in enumerate(json_data.items()):
+
+            print_message(f"\tGetting the 'before image' for: {sample_name}", PrintDisposition.DEBUG)
+            before_source_code = ''
+            before_files = sample_files['before']
+            for file in before_files:
+                print_message(f"\t\t{file}", PrintDisposition.DEBUG)
+                before_source_code += ('\n' + requests.get(file).text)
+            if (0 < len(before_source_code)):
+                sample_inputs_source.append(before_source_code)
+
+            print_message(f"\tGetting the 'after image' for: {sample_name}", PrintDisposition.DEBUG)
+            after_source_code = ''
+            after_files = sample_files['after']
+            for file in after_files:
+                print_message(f"\t\t{file}", PrintDisposition.DEBUG)
+                file_name = os.path.basename(os.path.normpath(file))
+                after_source_code = ("###" 
+                                    + file_name 
+                                    + "###" 
+                                    + "\n" 
+                                    + requests.get(file).text
+                                    + "\n" 
+                                    + file_name 
+                                    + ":end\n")
+            if (0 < len(after_source_code)):
+                sample_outputs_source.append(after_source_code)
+
+            print()
+    else:
+        raise ValueError(f"Failed to get prompt input file. {r.status_code}", PrintDisposition.ERROR)
 
 def list_to_string(input_list):
 
@@ -378,38 +412,11 @@ def init_app(args):
         except OSError as error:
             raise ValueError(f"Failed to create temp directory. {error}") from error
 
-    # Get directory names for before and after samples.
-    get_before_and_after_sample_dirs_from_settings_file()
-
     # Get the directories (samples) to process.
     get_directories_to_process(args)
 
     print_message("Application initialized.", PrintDisposition.DEBUG, override_indent=True)
     
-def get_before_and_after_sample_dirs_from_settings_file():
-
-    print_message("Getting before and after sample directories from settings file...", PrintDisposition.DEBUG)
-
-    try:
-        # Open the Inputs file.
-        with open(SETTINGS_FILE_NAME) as inputs_file:
-            # Load the JSON inputs file.
-            inputs = json.load(inputs_file)
-    except OSError as error:
-        raise ValueError(f"Failed to open settings file ({SETTINGS_FILE_NAME}). {error}") from error
-
-    # Each line is an input and there needs to be at least one line (input).
-    if 1 > len(inputs):
-        raise ValueError('At least one input/output pair must be specified in the inputs file.')
-
-    # For each line in the file (representing a sample)...
-    for i, (input, output) in enumerate(inputs.items()):
-        if not file_exists(input):
-            raise ValueError(f"[{SETTINGS_FILE_NAME}] Input file not found: {input}")
-        if not file_exists(output):
-            raise ValueError(f"[{SETTINGS_FILE_NAME}] Output file not found: {output}")
-        settings_before_and_after_dirs[input] = output
-
 def get_directories_to_process(args):
 
     print_message("Getting directories to process...", PrintDisposition.DEBUG)
@@ -438,8 +445,8 @@ def get_directories_to_process(args):
     else:
         raise ValueError(f"Sample directory not found: {sample_root_path}")
 
-def print_plan(args):
-    print_message("\nPrinting the plan...", PrintDisposition.DEBUG, override_indent=True)
+def confirm_plan(args):
+    print_message("\nPrinting and confirming the plan...", PrintDisposition.DEBUG, override_indent=True)
 
     if 0 == len(directories_to_process):
         print_message(f"There are no files to process in the specified directory: '{sample_root_path}'" + (" (including its subdirectories)" if args.recursive else "") + ".", PrintDisposition.UI)
@@ -451,7 +458,7 @@ def print_plan(args):
         print_message()
         print_message("Please review the plan below and reach out for guidance if you think the number of samples might be costly.", PrintDisposition.WARNING)
         print_message()
-        print_message("Plan:", PrintDisposition.UI)
+        print_message("Migration Plan:", PrintDisposition.UI)
         print_message()
 
         # Print the number of directories to process.
@@ -477,10 +484,21 @@ def print_plan(args):
             print_message(f"The debug files are written to: '{os.path.join(temp_path, relative_stub_root)}...'", PrintDisposition.DEBUG)
             print_message()
 
-        print_message("The following input pairs will be used to generate the new sample(s):", PrintDisposition.UI)
-        for i, (before, after) in enumerate(settings_before_and_after_dirs.items()):
-            print_message(f"\tBefore: {os.path.abspath(before)}", PrintDisposition.UI)
-            print_message(f"\tAfter: {os.path.abspath(after)}", PrintDisposition.UI)
+    print_message(f"Are you sure you want to continue processing the {len(directories_to_process)} samples?", PrintDisposition.UI)
+    print_message("[Y] Yes [No] No (quits the application)", PrintDisposition.UI)
+
+    while True:
+        time.sleep(0.3)
+
+        user_response = keyboard.read_key().upper()
+
+        global app_mode
+        if user_response == "Y":
+            break
+        elif user_response == "N":
+            raise ValueError("User cancelled the application.")
+
+        time.sleep(0.3)
 
     print_message("Printed the plan.", PrintDisposition.DEBUG, override_indent=True)
 
@@ -539,11 +557,11 @@ def main():
         init_app(args)
 
         # Print the plan to the user so that they know what is going to happen.
-        print_plan(args)
+        confirm_plan(args)
 
         # Get the source code for the samples that are being used as the prompt 
         # to illustrate the "before and after" samples to Azure OpenAI.
-        get_input_source(args)
+        get_input_source()
 
         # For each directory to process...
         for i, sample_dir in enumerate(directories_to_process):
