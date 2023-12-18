@@ -1,27 +1,27 @@
 {
   "API Management": {
-    "before": ["https://raw.githubusercontent.com/TomArcherMsft/migrate-terraform-sample/main/examples/inputs/api-management/main.tf"
-              ,"https://raw.githubusercontent.com/TomArcherMsft/migrate-terraform-sample/main/examples/inputs/api-management/output.tf"
-              ,"https://raw.githubusercontent.com/TomArcherMsft/migrate-terraform-sample/main/examples/inputs/api-management/README.md"
-              ,"https://raw.githubusercontent.com/TomArcherMsft/migrate-terraform-sample/main/examples/inputs/api-management/variables.tf"
+    "before": ["https://raw.githubusercontent.com/TomArcherMsft/migrate-terraform-sample/main/prompt-inputs/api-management/before/main.tf"
+              ,"https://raw.githubusercontent.com/TomArcherMsft/migrate-terraform-sample/main/prompt-inputs/api-management/before/output.tf"
+              ,"https://raw.githubusercontent.com/TomArcherMsft/migrate-terraform-sample/main/prompt-inputs/api-management/before/README.md"
+              ,"https://raw.githubusercontent.com/TomArcherMsft/migrate-terraform-sample/main/prompt-inputs/api-management/before/variables.tf"
             ],
-    "after": ["https://raw.githubusercontent.com/TomArcherMsft/migrate-terraform-sample/main/examples/outputs/api-management/main.tf"
-              ,"https://raw.githubusercontent.com/TomArcherMsft/migrate-terraform-sample/main/examples/outputs/api-management/output.tf"
-              ,"https://raw.githubusercontent.com/TomArcherMsft/migrate-terraform-sample/main/examples/outputs/api-management/providers.tf"
-              ,"https://raw.githubusercontent.com/TomArcherMsft/migrate-terraform-sample/main/examples/outputs/api-management/README.md"
-              ,"https://raw.githubusercontent.com/TomArcherMsft/migrate-terraform-sample/main/examples/outputs/api-management/variables.tf"
+    "after": ["https://raw.githubusercontent.com/TomArcherMsft/migrate-terraform-sample/main/prompt-inputs/api-management/after/main.tf"
+              ,"https://raw.githubusercontent.com/TomArcherMsft/migrate-terraform-sample/main/prompt-inputs/api-management/after/output.tf"
+              ,"https://raw.githubusercontent.com/TomArcherMsft/migrate-terraform-sample/main/prompt-inputs/api-management/after/providers.tf"
+              ,"https://raw.githubusercontent.com/TomArcherMsft/migrate-terraform-sample/main/prompt-inputs/api-management/after/README.md"
+              ,"https://raw.githubusercontent.com/TomArcherMsft/migrate-terraform-sample/main/prompt-inputs/api-management/after/variables.tf"
             ]
   },
   "Azure Batch (Basic)": {
-    "before": ["https://raw.githubusercontent.com/TomArcherMsft/migrate-terraform-sample/main/examples/inputs/batch/basic/README.md"
-              ,"https://raw.githubusercontent.com/TomArcherMsft/migrate-terraform-sample/main/examples/inputs/batch/basic/main.tf"
-              ,"https://raw.githubusercontent.com/TomArcherMsft/migrate-terraform-sample/main/examples/inputs/batch/basic/variables.tf"
+    "before": ["https://raw.githubusercontent.com/TomArcherMsft/migrate-terraform-sample/main/prompt-inputs/batch/basic/before/README.md"
+              ,"https://raw.githubusercontent.com/TomArcherMsft/migrate-terraform-sample/main/prompt-inputs/batch/basic/before/main.tf"
+              ,"https://raw.githubusercontent.com/TomArcherMsft/migrate-terraform-sample/main/prompt-inputs/batch/basic/before/variables.tf"
             ],
-    "after": ["https://raw.githubusercontent.com/TomArcherMsft/migrate-terraform-sample/main/examples/outputs/batch/basic/main.tf"
-              ,"https://raw.githubusercontent.com/TomArcherMsft/migrate-terraform-sample/main/examples/outputs/batch/basic/output.tf"
-              ,"https://raw.githubusercontent.com/TomArcherMsft/migrate-terraform-sample/main/examples/outputs/batch/basic/providers.tf"
-              ,"https://raw.githubusercontent.com/TomArcherMsft/migrate-terraform-sample/main/examples/outputs/batch/basic/README.md"
-              ,"https://raw.githubusercontent.com/TomArcherMsft/migrate-terraform-sample/main/examples/outputs/batch/basic/variables.tf"
+    "after": ["https://raw.githubusercontent.com/TomArcherMsft/migrate-terraform-sample/main/prompt-inputs/batch/basic/after/main.tf"
+              ,"https://raw.githubusercontent.com/TomArcherMsft/migrate-terraform-sample/main/prompt-inputs/batch/basic/after/output.tf"
+              ,"https://raw.githubusercontent.com/TomArcherMsft/migrate-terraform-sample/main/prompt-inputs/batch/basic/after/providers.tf"
+              ,"https://raw.githubusercontent.com/TomArcherMsft/migrate-terraform-sample/main/prompt-inputs/batch/basic/after/README.md"
+              ,"https://raw.githubusercontent.com/TomArcherMsft/migrate-terraform-sample/main/prompt-inputs/batch/basic/after/variables.tf"
             ]
   }
 }
