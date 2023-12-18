@@ -13,8 +13,8 @@
             ]
   },
   "Azure Batch (Basic)": {
-    "before": ["https://raw.githubusercontent.com/TomArcherMsft/migrate-terraform-sample/main/prompt-inputs/batch/basic/before/README.md"
-              ,"https://raw.githubusercontent.com/TomArcherMsft/migrate-terraform-sample/main/prompt-inputs/batch/basic/before/main.tf"
+    "before": ["https://raw.githubusercontent.com/TomArcherMsft/migrate-terraform-sample/main/prompt-inputs/batch/basic/before/main.tf"
+              ,"https://raw.githubusercontent.com/TomArcherMsft/migrate-terraform-sample/main/prompt-inputs/batch/basic/before/README.md"
               ,"https://raw.githubusercontent.com/TomArcherMsft/migrate-terraform-sample/main/prompt-inputs/batch/basic/before/variables.tf"
             ],
     "after": ["https://raw.githubusercontent.com/TomArcherMsft/migrate-terraform-sample/main/prompt-inputs/batch/basic/after/main.tf"
