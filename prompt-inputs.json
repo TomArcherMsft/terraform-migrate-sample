@@ -12,17 +12,4 @@
               ,"https://raw.githubusercontent.com/TomArcherMsft/migrate-terraform-sample/main/examples/outputs/api-management/variables.tf"
             ]
   }
-  ,"Azure Batch (Basic)": {
-    "before": ["https://raw.githubusercontent.com/TomArcherMsft/migrate-terraform-sample/main/examples/inputs/batch/basic/README.md"
-              ,"https://raw.githubusercontent.com/TomArcherMsft/migrate-terraform-sample/main/examples/inputs/batch/basic/main.tf"
-              ,"https://raw.githubusercontent.com/TomArcherMsft/migrate-terraform-sample/main/examples/inputs/batch/basic/output.tf"
-              ,"https://raw.githubusercontent.com/TomArcherMsft/migrate-terraform-sample/main/examples/inputs/batch/basic/variables.tf"
-            ]
-    ,"after": ["https://raw.githubusercontent.com/TomArcherMsft/migrate-terraform-sample/main/examples/outputs/batch/basic/README.md"
-              ,"https://raw.githubusercontent.com/TomArcherMsft/migrate-terraform-sample/main/examples/outputs/batch/basic/main.tf"
-              ,"https://raw.githubusercontent.com/TomArcherMsft/migrate-terraform-sample/main/examples/outputs/batch/basic/output.tf"
-              ,"https://raw.githubusercontent.com/TomArcherMsft/migrate-terraform-sample/main/examples/outputs/batch/basic/providers.tf"
-              ,"https://raw.githubusercontent.com/TomArcherMsft/migrate-terraform-sample/main/examples/outputs/batch/basic/variables.tf"
-            ]
-  }
 }
