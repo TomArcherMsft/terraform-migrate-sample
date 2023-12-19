@@ -164,7 +164,8 @@ def generate_new_sample(sample_dir):
 
 def get_input_source():
 
-    print_message('Getting before & after versions of samples that have been migrated.', PrintDisposition.DEBUG)
+    print_message()
+    print_message('Getting before & after versions of samples that have been migrated...', PrintDisposition.STATUS)
 
     r = requests.get(PROMPT_INPUT_FILE_NAME)
     if 200 == r.status_code:
@@ -484,7 +485,7 @@ def confirm_plan(args):
             print_message(f"The debug files are written to: '{os.path.join(temp_path, relative_stub_root)}...'", PrintDisposition.DEBUG)
             print_message()
 
-    print_message(f"Are you sure you want to continue processing the {len(directories_to_process)} samples?", PrintDisposition.UI)
+    print_message(f"Are you sure you want to continue processing the {len(directories_to_process)} samples?", PrintDisposition.UI)tma
     print_message("[Y] Yes [No] No (quits the application)", PrintDisposition.UI)
 
     while True:
@@ -507,7 +508,8 @@ def confirm_continuation_for_current_sample(index, total, sample_dir):
 
     process_current_sample = True
 
-    print_message()
+    if 1 < index:
+        print_message()
     print_message(f"Migrate sample directory {index} of {total}: {sample_dir}", PrintDisposition.UI)
     print_message("Are you sure you want to perform this action?", PrintDisposition.UI)
     print_message("[Y] Yes, process this sample [A] Yes to All, [No] Skip this sample, [Q] Quit the application.", PrintDisposition.UI)
