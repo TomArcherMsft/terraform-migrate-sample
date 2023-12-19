@@ -485,7 +485,7 @@ def confirm_plan(args):
             print_message(f"The debug files are written to: '{os.path.join(temp_path, relative_stub_root)}...'", PrintDisposition.DEBUG)
             print_message()
 
-    print_message(f"Are you sure you want to continue processing the {len(directories_to_process)} samples?", PrintDisposition.UI)tma
+    print_message(f"Are you sure you want to continue processing the {len(directories_to_process)} samples?", PrintDisposition.UI)
     print_message("[Y] Yes [No] No (quits the application)", PrintDisposition.UI)
 
     while True:
