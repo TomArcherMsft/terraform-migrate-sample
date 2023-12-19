@@ -9,7 +9,7 @@ import json
 from enum import Enum
 import shutil
 import requests
-
+import azure.core.exceptions
 import openai
 from azure.identity import AzureCliCredential
 
@@ -18,15 +18,6 @@ OPENAI_API_BASE                 = 'https://openai-content-selfserv.openai.azure.
 OPENAI_VERSION                  = '2023-07-01-preview' # This may change in the future.
 OPENAI_API_TYPE                 = 'azure_ad'
 OPENAI_ENGINE                   = 'gpt-4-32k-moreExpensivePerToken'
-
-openai.api_base     = OPENAI_API_BASE
-openai.api_version  = OPENAI_VERSION
-
-credential = AzureCliCredential()
-token = credential.get_token("https://cognitiveservices.azure.com/.default")
-
-openai.api_type     = OPENAI_API_TYPE
-openai.api_key      = token.token
 
 # App constants
 PROMPT_INPUT_FILE_NAME          = "https://raw.githubusercontent.com/TomArcherMsft/migrate-terraform-sample/main/prompt-inputs/prompt-inputs.json"
@@ -39,7 +30,6 @@ TEST_RECORD_FILE_NAME           = 'TestRecord.md'
 
 # App globals
 sample_root_path                = ''
-settings_before_and_after_dirs  = {}
 directories_to_process          = []
 sample_inputs_source            = []
 sample_outputs_source           = []
@@ -550,10 +540,36 @@ def delete_previous_sample_dirs(sample_dir):
         print_message(f"Deleting sample temp path: {sample_temp_path}", PrintDisposition.DEBUG)
         shutil.rmtree(sample_temp_path, ignore_errors=True)
 
+def init_azure_openai():
+    openai.api_base     = OPENAI_API_BASE
+    openai.api_version  = OPENAI_VERSION
+
+    try:
+        credential = AzureCliCredential()
+
+        # If get_tokey() fails, it prints its own error message.
+        # So, set color to RED.
+        print(Fore.RED)
+        token = credential.get_token("https://cognitiveservices.azure.com/.default")
+    except azure.identity.CredentialUnavailableError as error:
+        # Don't send any text in the exception as get_tokey will
+        # have already printed its own error message.
+        raise ValueError(f"") from error
+    except azure.core.exceptions.ClientAuthenticationError as error:
+        # Don't send any text in the exception as get_tokey will
+        # have already printed its own error message.
+        raise ValueError(f"") from error
+    
+    openai.api_type     = OPENAI_API_TYPE
+    openai.api_key      = token.token
+
 def main():
     try:
         # Get the command-line args (parameters).
         args = parse_args()
+
+        # Initialize Azure OpenAI.
+        init_azure_openai()
 
         # Initialize the application.
         init_app(args)
@@ -584,6 +600,8 @@ def main():
                 print_message(f"\nSample successfully migrated: {sample_dir}", PrintDisposition.SUCCESS)
 
     except ValueError as error:
+        print_message(f"\nFailed to migrate sample(s). {error}", PrintDisposition.ERROR)
+    except Exception as error:
         print_message(f"\nFailed to migrate sample(s). {error}", PrintDisposition.ERROR)
 
 main()
