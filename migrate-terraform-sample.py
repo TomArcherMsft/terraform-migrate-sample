@@ -20,9 +20,9 @@ OPENAI_API_TYPE                 = 'azure_ad'
 OPENAI_ENGINE                   = 'gpt-4-32k-moreExpensivePerToken'
 
 # App constants
-PROMPT_INPUT_FILE_NAME          = "https://raw.githubusercontent.com/TomArcherMsft/migrate-terraform-sample/main/prompt-inputs/prompt-inputs.json"
-PROMPT_FILE_NAME                = 'prompt.json'
-COMPLETION_FILE_NAME            = 'completion.txt'
+PROMPT_INPUT_FILE_NAME          = "prompt-inputs\\prompt-inputs.json"
+DEBUG_PROMPT_FILE_NAME          = 'prompt.json'
+DEBUG_COMPLETION_FILE_NAME      = 'completion.txt'
 MAX_SAMPLES_TO_PRINT            = 5
 OUTPUT_DIRECTORY_NAME           = 'outputs'
 TEMP_DIRECTORY_NAME             = 'temp'
@@ -106,7 +106,7 @@ def generate_new_sample(sample_dir):
 
         if debug_mode: # Write the prompt to a file.
             curr_sample_temp_path = get_normalized_path(sample_dir, temp_path)
-            curr_sample_temp_path = os.path.join(curr_sample_temp_path, PROMPT_FILE_NAME)
+            curr_sample_temp_path = os.path.join(curr_sample_temp_path, DEBUG_PROMPT_FILE_NAME)
             print_message(f"Prompt file path: {curr_sample_temp_path}", PrintDisposition.DEBUG)
 
             try:
@@ -138,7 +138,7 @@ def generate_new_sample(sample_dir):
 
     if debug_mode: # Write the completion to a file.
         curr_sample_temp_path = get_normalized_path(sample_dir, temp_path)
-        curr_sample_temp_path = os.path.join(curr_sample_temp_path, COMPLETION_FILE_NAME)
+        curr_sample_temp_path = os.path.join(curr_sample_temp_path, DEBUG_COMPLETION_FILE_NAME)
         print_message(f"Completion file path: {curr_sample_temp_path}", PrintDisposition.DEBUG)
 
         try:
@@ -152,47 +152,39 @@ def generate_new_sample(sample_dir):
     
     return completion
 
-def get_input_source():
+def get_prompt_input_source():
 
-    print_message()
-    print_message('Getting before & after versions of samples that have been migrated...', PrintDisposition.STATUS)
+    print_message("Getting before and after sample directories from settings file...", PrintDisposition.DEBUG)
 
-    r = requests.get(PROMPT_INPUT_FILE_NAME)
-    if 200 == r.status_code:
-        # load the contents of the file into a json variable
-        json_data = r.json()
+    application_path = get_application_path()
+    prompt_input_file_name = os.path.join(application_path, PROMPT_INPUT_FILE_NAME)
 
-        for i, (sample_name, sample_files) in enumerate(json_data.items()):
+    try:
+        # Open the Inputs file.
+        print_message(f"Opening prompt inputs file: {prompt_input_file_name}", PrintDisposition.DEBUG)
+        with open(prompt_input_file_name) as inputs_file: 
+            # Load the JSON inputs file.
+            inputs = json.load(inputs_file)
+    except OSError as error:
+        raise ValueError(f"Failed to open prompt inputs file ({prompt_input_file_name}). {error}") from error
 
-            print_message(f"\tGetting the 'before image' for: {sample_name}", PrintDisposition.DEBUG)
-            before_source_code = ''
-            before_files = sample_files['before']
-            for file in before_files:
-                print_message(f"\t\t{file}", PrintDisposition.DEBUG)
-                before_source_code += ('\n' + requests.get(file).text)
-            if (0 < len(before_source_code)):
-                sample_inputs_source.append(before_source_code)
+    # There needs to be at least one line (input).
+    if 1 > len(inputs):
+        raise ValueError('At least one input/output pair must be specified in the inputs file.')
 
-            print_message(f"\tGetting the 'after image' for: {sample_name}", PrintDisposition.DEBUG)
-            after_source_code = ''
-            after_files = sample_files['after']
-            for file in after_files:
-                print_message(f"\t\t{file}", PrintDisposition.DEBUG)
-                file_name = os.path.basename(os.path.normpath(file))
-                after_source_code += ("###" 
-                                    + file_name 
-                                    + "###" 
-                                    + "\n" 
-                                    + requests.get(file).text
-                                    + "\n" 
-                                    + file_name 
-                                    + ":end\n")
-            if (0 < len(after_source_code)):
-                sample_outputs_source.append(after_source_code)
+    # For each line in the file (representing a sample directory)...
+    for (before, after) in inputs.items():
+        before_dir = os.path.join(application_path, before)
+        if file_exists(before_dir):
+            sample_inputs_source.append(get_terraform_source_code(before_dir, include_file_names=False))
+        else:
+            raise ValueError(f"[{prompt_input_file_name}] 'Before' directory not found: {before_dir}")
 
-            print()
-    else:
-        raise ValueError(f"Failed to get prompt input file. {r.status_code}", PrintDisposition.ERROR)
+        after_dir = os.path.join(application_path, after)        
+        if file_exists(after_dir):
+            sample_outputs_source.append(get_terraform_source_code(after_dir, include_file_names=True))
+        else:
+            raise ValueError(f"[{prompt_input_file_name}] 'After' directory not found: {after_dir}")
 
 def list_to_string(input_list):
 
@@ -218,6 +210,8 @@ def get_file_contents(file):
     return file_contents
 
 def get_terraform_source_code(dir, include_file_names):
+    print_message(f"Getting Terraform source code for: {dir}", PrintDisposition.DEBUG)
+
     current_sample_source_code = ""
 
     # For every file in the source directory...
@@ -345,6 +339,17 @@ def write_new_sample(sample_dir, file_contents):
     else:
         raise ValueError('Failed to get a valid completion from OpenAI.')
 
+def get_application_path():
+    # Get the application path.
+    application_path = ''
+    if getattr(sys, 'frozen', False):
+        application_path = os.path.dirname(sys.executable)
+    elif __file__:
+        application_path = os.path.dirname(__file__)
+    print_message(f"Application path: {application_path}", PrintDisposition.DEBUG)
+
+    return application_path
+    
 def init_app(args):
 
     # Set global debugging flag based on command-line arg.        
@@ -366,12 +371,7 @@ def init_app(args):
         raise ValueError(f"Sample directory not found: {sample_root_path}")
 
     # Get the application path.
-    application_path = ''
-    if getattr(sys, 'frozen', False):
-        application_path = os.path.dirname(sys.executable)
-    elif __file__:
-        application_path = os.path.dirname(__file__)
-    print_message(f"Application path: {application_path}", PrintDisposition.DEBUG)
+    application_path = get_application_path()
 
     # Verify that the application path was found.
     if application_path == '':
@@ -382,11 +382,6 @@ def init_app(args):
     output_path = os.path.join(application_path, OUTPUT_DIRECTORY_NAME)
     print_message(f"Output path: {output_path}", PrintDisposition.DEBUG)
 
-    # Set the temp path based on the application path.
-    global temp_path
-    temp_path = os.path.join(application_path, TEMP_DIRECTORY_NAME)
-    print_message(f"Temp path: {temp_path}", PrintDisposition.DEBUG)
-
     # If output path doesn't exist, create it.
     if not os.path.exists(output_path):
         try:
@@ -395,8 +390,13 @@ def init_app(args):
         except OSError as error:
             raise ValueError(f"Failed to create output directory. {error}") from error
         
+    # Set the temp path based on the application path.
+    global temp_path
+    temp_path = os.path.join(application_path, TEMP_DIRECTORY_NAME)
+    print_message(f"Temp path: {temp_path}", PrintDisposition.DEBUG)
+
     # If temp path doesn't exist, create it.
-    if not os.path.exists(temp_path):
+    if debug_mode and not os.path.exists(temp_path):
         try:
             print_message("Creating temp path for sample...", PrintDisposition.DEBUG)
             os.mkdir(temp_path)
@@ -547,17 +547,17 @@ def init_azure_openai():
     try:
         credential = AzureCliCredential()
 
-        # If get_tokey() fails, it prints its own error message.
-        # So, set color to RED.
+        # If AzureCliCredential.get_token() fails, it prints its own error message.
+        # So, set color to RED just in case before the call.
         print(Fore.RED)
         token = credential.get_token("https://cognitiveservices.azure.com/.default")
     except azure.identity.CredentialUnavailableError as error:
-        # Don't send any text in the exception as get_tokey will
-        # have already printed its own error message.
+        # Don't send any text in the exception as AzureCliCredential.get_token() 
+        # has already printed its own error message.
         raise ValueError(f"") from error
     except azure.core.exceptions.ClientAuthenticationError as error:
-        # Don't send any text in the exception as get_tokey will
-        # have already printed its own error message.
+        # Don't send any text in the exception as AzureCliCredential.get_token() 
+        # has already printed its own error message.
         raise ValueError(f"") from error
     
     openai.api_type     = OPENAI_API_TYPE
@@ -579,7 +579,7 @@ def main():
 
         # Get the source code for the samples that are being used as the prompt 
         # to illustrate the "before and after" samples to Azure OpenAI.
-        get_input_source()
+        get_prompt_input_source()
 
         # For each directory to process...
         for i, sample_dir in enumerate(directories_to_process):
