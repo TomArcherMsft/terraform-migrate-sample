@@ -20,7 +20,7 @@ OPENAI_API_TYPE                 = 'azure_ad'
 OPENAI_ENGINE                   = 'gpt-4-32k-moreExpensivePerToken'
 
 # App constants
-PROMPT_INPUT_FILE_NAME          = "prompt-inputs\\prompt-inputs.json"
+PROMPT_INPUT_FILE_NAME          = "https://raw.githubusercontent.com/TomArcherMsft/migrate-terraform-sample/main/prompt-inputs/prompt-inputs.json"
 DEBUG_PROMPT_FILE_NAME          = 'prompt.json'
 DEBUG_COMPLETION_FILE_NAME      = 'completion.txt'
 MAX_SAMPLES_TO_PRINT            = 5
@@ -152,7 +152,51 @@ def generate_new_sample(sample_dir):
     
     return completion
 
-def get_prompt_input_source():
+def get_prompt_input_source_remote():
+
+    print_message()
+    print_message('Getting before & after versions of samples that have been migrated...', PrintDisposition.STATUS)
+
+    r = requests.get(PROMPT_INPUT_FILE_NAME)
+    if 200 == r.status_code:
+        # load the contents of the file into a json variable
+        json_data = r.json()
+
+        for (sample_name, sample_files) in json_data.items():
+
+            print_message(f"\tGetting the 'before image' for: {sample_name}", PrintDisposition.DEBUG)
+            before_source_code = ''
+            print(1)
+            before_files = sample_files['before']
+            print(2)
+            for file in before_files:
+                print_message(f"\t\t{file}", PrintDisposition.DEBUG)
+                before_source_code += ('\n' + requests.get(file).text)
+            if (0 < len(before_source_code)):
+                sample_inputs_source.append(before_source_code)
+
+            print_message(f"\tGetting the 'after image' for: {sample_name}", PrintDisposition.DEBUG)
+            after_source_code = ''
+            after_files = sample_files['after']
+            for file in after_files:
+                print_message(f"\t\t{file}", PrintDisposition.DEBUG)
+                file_name = os.path.basename(os.path.normpath(file))
+                after_source_code += ("###" 
+                                    + file_name 
+                                    + "###" 
+                                    + "\n" 
+                                    + requests.get(file).text
+                                    + "\n" 
+                                    + file_name 
+                                    + ":end\n")
+            if (0 < len(after_source_code)):
+                sample_outputs_source.append(after_source_code)
+
+            print()
+    else:
+        raise ValueError(f"Failed to get prompt input file. {r.status_code}", PrintDisposition.ERROR)
+
+def get_prompt_input_source_local():
 
     print_message("Getting before and after sample directories from settings file...", PrintDisposition.DEBUG)
 
@@ -579,7 +623,7 @@ def main():
 
         # Get the source code for the samples that are being used as the prompt 
         # to illustrate the "before and after" samples to Azure OpenAI.
-        get_prompt_input_source()
+        get_prompt_input_source_remote()
 
         # For each directory to process...
         for i, sample_dir in enumerate(directories_to_process):
