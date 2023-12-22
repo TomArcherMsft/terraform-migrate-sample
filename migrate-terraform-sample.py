@@ -303,7 +303,7 @@ def parse_args():
     argParser.add_argument("-d", 
                            "--debug", 
                            action=argparse.BooleanOptionalAction,
-                           help="Outputs verbose messaging and files to help with debugging.", 
+                           help=argparse.SUPPRESS, 
                            required=False)
 
     return argParser.parse_args()
