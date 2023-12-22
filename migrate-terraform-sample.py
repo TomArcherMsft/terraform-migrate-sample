@@ -166,9 +166,7 @@ def get_prompt_input_source_remote():
 
             print_message(f"\tGetting the 'before image' for: {sample_name}", PrintDisposition.DEBUG)
             before_source_code = ''
-            print(1)
             before_files = sample_files['before']
-            print(2)
             for file in before_files:
                 print_message(f"\t\t{file}", PrintDisposition.DEBUG)
                 before_source_code += ('\n' + requests.get(file).text)
