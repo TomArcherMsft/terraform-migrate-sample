@@ -164,6 +164,9 @@ cython_debug/
 /inputs/
 /output/
 /outputs/
+/dist/*
 .terraform*
 test*
+*.spec
+*.exe
 ```

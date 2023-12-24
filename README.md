@@ -10,6 +10,14 @@ From the `dist` directory, copy the `migrate-terraform-sample.exe`  to your dest
 
 Run `migrate-terraform-sample -h`
 
+## Use-case Scenarios
+
+### No sample code
+
+### Single sample
+
+### Multiple samples
+
 ## Need help?
 
 Email the Terraform Content Team alias for help/guidance.

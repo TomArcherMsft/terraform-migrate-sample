@@ -1,5 +1,9 @@
+# Build instructions:
+# pyinstaller --onefile --add-data ./prompt-inputs:./prompt-inputs migrate-terraform-sample.py
+
 import sys
 import os
+from pathlib import Path
 import keyboard
 import time
 import re
@@ -20,7 +24,7 @@ OPENAI_API_TYPE                 = 'azure_ad'
 OPENAI_ENGINE                   = 'gpt-4-32k-moreExpensivePerToken'
 
 # App constants
-PROMPT_INPUT_FILE_NAME          = "https://raw.githubusercontent.com/TomArcherMsft/migrate-terraform-sample/main/prompt-inputs/prompt-inputs.json"
+PROMPT_INPUT_FILE_NAME          = 'prompt-inputs/prompt-inputs.json'
 DEBUG_PROMPT_FILE_NAME          = 'prompt.json'
 DEBUG_COMPLETION_FILE_NAME      = 'completion.txt'
 MAX_SAMPLES_TO_PRINT            = 5
@@ -152,54 +156,15 @@ def generate_new_sample(sample_dir):
     
     return completion
 
-def get_prompt_input_source_remote():
+def get_prompt_input_source():
 
     print_message()
-    print_message('Getting before & after versions of samples that have been migrated...', PrintDisposition.STATUS)
-
-    r = requests.get(PROMPT_INPUT_FILE_NAME)
-    if 200 == r.status_code:
-        # load the contents of the file into a json variable
-        json_data = r.json()
-
-        for (sample_name, sample_files) in json_data.items():
-
-            print_message(f"\tGetting the 'before image' for: {sample_name}", PrintDisposition.DEBUG)
-            before_source_code = ''
-            before_files = sample_files['before']
-            for file in before_files:
-                print_message(f"\t\t{file}", PrintDisposition.DEBUG)
-                before_source_code += ('\n' + requests.get(file).text)
-            if (0 < len(before_source_code)):
-                sample_inputs_source.append(before_source_code)
-
-            print_message(f"\tGetting the 'after image' for: {sample_name}", PrintDisposition.DEBUG)
-            after_source_code = ''
-            after_files = sample_files['after']
-            for file in after_files:
-                print_message(f"\t\t{file}", PrintDisposition.DEBUG)
-                file_name = os.path.basename(os.path.normpath(file))
-                after_source_code += ("###" 
-                                    + file_name 
-                                    + "###" 
-                                    + "\n" 
-                                    + requests.get(file).text
-                                    + "\n" 
-                                    + file_name 
-                                    + ":end\n")
-            if (0 < len(after_source_code)):
-                sample_outputs_source.append(after_source_code)
-
-            print()
-    else:
-        raise ValueError(f"Failed to get prompt input file. {r.status_code}", PrintDisposition.ERROR)
-
-def get_prompt_input_source_local():
-
     print_message("Getting before and after sample directories from settings file...", PrintDisposition.DEBUG)
 
-    application_path = get_application_path()
-    prompt_input_file_name = os.path.join(application_path, PROMPT_INPUT_FILE_NAME)
+    bundle_dir = Path(__file__).parent
+    print_message(f"Bundle_dir: {bundle_dir}", PrintDisposition.DEBUG)
+
+    prompt_input_file_name = os.path.join(bundle_dir, PROMPT_INPUT_FILE_NAME)
 
     try:
         # Open the Inputs file.
@@ -216,13 +181,13 @@ def get_prompt_input_source_local():
 
     # For each line in the file (representing a sample directory)...
     for (before, after) in inputs.items():
-        before_dir = os.path.join(application_path, before)
+        before_dir = os.path.join(bundle_dir, before)
         if file_exists(before_dir):
             sample_inputs_source.append(get_terraform_source_code(before_dir, include_file_names=False))
         else:
             raise ValueError(f"[{prompt_input_file_name}] 'Before' directory not found: {before_dir}")
 
-        after_dir = os.path.join(application_path, after)        
+        after_dir = os.path.join(bundle_dir, after)        
         if file_exists(after_dir):
             sample_outputs_source.append(get_terraform_source_code(after_dir, include_file_names=True))
         else:
@@ -289,6 +254,7 @@ def parse_args():
     # Configure argParser for user-supplied arguments.
 
     argParser = argparse.ArgumentParser()
+
     argParser.add_argument("-s", 
                            "--sample_directory", 
                            help="Name of input sample directory.", 
@@ -621,7 +587,7 @@ def main():
 
         # Get the source code for the samples that are being used as the prompt 
         # to illustrate the "before and after" samples to Azure OpenAI.
-        get_prompt_input_source_remote()
+        get_prompt_input_source()
 
         # For each directory to process...
         for i, sample_dir in enumerate(directories_to_process):
