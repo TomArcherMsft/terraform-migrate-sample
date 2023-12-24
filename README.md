@@ -4,8 +4,6 @@ Tool that uses Azure OpenAI to migrate an existing Terraform code sample to meet
 
 ## Installation
 
-From the `dist` directory, copy the `terraform-migrate-sample.exe`  to your destination directory.
-
 ## Syntax
 
 Run `terraform-migrate-sample -h`
